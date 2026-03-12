@@ -25,19 +25,6 @@ looks deceptively harmless because it is "just for examples", but it is already 
 
 The core argument is simple. Source control should keep code and small reviewable metadata. Heavy payloads should stay outside normal Git history.
 
-Today this repository provides:
-
-- the public consumer entrypoint `nam_add_channel_target(...)`
-- consumer integration based only on public `CMake ExternalData` APIs
-- `GitHub Release assets` as the first backend
-- standalone payloads published as files
-- bundle payloads published as `zip` files and kept as `zip` files in the build tree
-- build-time materialization that auto-detects the lightest supported file mode once per configure
-- a `NO_SYMLINKS` escape hatch for forced copy mode
-- a local `smoke/` consumer plus a `2 x 3` Windows/Linux CI matrix for `symlink`, `hardlink`, and `copy`
-
-For consumer details see [cmake/README.md](cmake/README.md).
-
 ## Model
 
 The intended direction is:
