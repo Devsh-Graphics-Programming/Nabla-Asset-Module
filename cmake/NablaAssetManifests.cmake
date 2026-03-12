@@ -14,6 +14,18 @@ function(_nam_summary MESSAGE_TEXT)
     message(STATUS "NablaAssetManifests: ${MESSAGE_TEXT}")
 endfunction()
 
+function(_nam_validate_file_link_mode MODE_VALUE OUT_VAR)
+    string(TOLOWER "${MODE_VALUE}" _mode)
+    if (
+        NOT _mode STREQUAL "copy"
+        AND NOT _mode STREQUAL "hardlink"
+        AND NOT _mode STREQUAL "symlink"
+    )
+        message(FATAL_ERROR "NablaAssetManifests: unsupported file link mode `${MODE_VALUE}`")
+    endif()
+    set(${OUT_VAR} "${_mode}" PARENT_SCOPE)
+endfunction()
+
 function(_nam_detect_file_link_mode OUT_VAR)
     set(_probe_root "${CMAKE_CURRENT_BINARY_DIR}/.nam_probe")
     file(MAKE_DIRECTORY "${_probe_root}")
@@ -52,6 +64,17 @@ function(_nam_detect_file_link_mode OUT_VAR)
 
     file(REMOVE "${_dst}" "${_src}")
     set(${OUT_VAR} "copy" PARENT_SCOPE)
+endfunction()
+
+function(_nam_resolve_file_link_mode OUT_VAR)
+    if (DEFINED NAM_INTERNAL_FORCE_FILE_LINK_MODE AND NOT "${NAM_INTERNAL_FORCE_FILE_LINK_MODE}" STREQUAL "")
+        _nam_validate_file_link_mode("${NAM_INTERNAL_FORCE_FILE_LINK_MODE}" _forced_mode)
+        set(${OUT_VAR} "${_forced_mode}" PARENT_SCOPE)
+        return()
+    endif()
+
+    _nam_detect_file_link_mode(_detected_mode)
+    set(${OUT_VAR} "${_detected_mode}" PARENT_SCOPE)
 endfunction()
 
 function(nam_get_repo_root OUT_VAR)
@@ -405,7 +428,7 @@ function(nam_add_channel_target)
     set(ExternalData_URL_TEMPLATES "ExternalDataCustomScript://NAM/%(hash)")
     set(ExternalData_CUSTOM_SCRIPT_NAM "${_fetch_script}")
     add_custom_target("${NAM_TARGET}")
-    _nam_detect_file_link_mode(_file_link_mode)
+    _nam_resolve_file_link_mode(_file_link_mode)
     if (NAM_NO_SYMLINKS)
         set(_file_link_mode "copy")
     endif()

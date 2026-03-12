@@ -103,7 +103,7 @@ This is the exact consumer model we want:
 - a shared local object store
 - reuse across many build directories and worktrees
 - reuse across many independent repositories too
-- normal local files materialized into build trees via symlinks or copies
+- normal local files materialized into build trees via symlinks, hardlinks, or copies
 - no requirement for consumers to know which remote backend served the blob
 
 ## Backends

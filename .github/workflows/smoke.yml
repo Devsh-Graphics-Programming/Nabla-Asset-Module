@@ -1,0 +1,64 @@
+name: Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  smoke:
+    name: ${{ matrix.os }} / ${{ matrix.link_mode }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        link_mode:
+          - symlink
+          - hardlink
+          - copy
+        include:
+          - os: ubuntu-latest
+            native_build_arg: -j1
+          - os: windows-latest
+            native_build_arg: /m:1
+
+    env:
+      NAM_CACHE_ROOT: ${{ github.workspace }}/.nam-cache
+      SMOKE_BUILD_DIR: ${{ github.workspace }}/smoke/build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore NAM cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NAM_CACHE_ROOT }}
+          key: nam-cache-${{ runner.os }}-${{ hashFiles('media/**/*.dvc') }}
+          restore-keys: |
+            nam-cache-${{ runner.os }}-
+
+      - name: Configure smoke
+        shell: pwsh
+        run: |
+          cmake -E rm -rf $env:SMOKE_BUILD_DIR
+          cmake -E make_directory $env:NAM_CACHE_ROOT
+          cmake -S smoke -B $env:SMOKE_BUILD_DIR `
+            -DNAM_SMOKE_CACHE_ROOT="$env:NAM_CACHE_ROOT" `
+            -DNAM_SMOKE_LINK_MODE=${{ matrix.link_mode }}
+
+      - name: Build smoke
+        shell: pwsh
+        run: cmake --build $env:SMOKE_BUILD_DIR --config Debug --target media -- ${{ matrix.native_build_arg }}
+
+      - name: Verify materialization stats
+        shell: pwsh
+        run: |
+          python smoke/ci/verify_materialization.py `
+            --build-dir $env:SMOKE_BUILD_DIR `
+            --cache-root $env:NAM_CACHE_ROOT `
+            --expected-mode ${{ matrix.link_mode }}
