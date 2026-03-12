@@ -128,6 +128,9 @@ Release publishing policy in this prototype is intentionally simple:
 
 ## Target layout
 
+<details>
+<summary>Click to expand</summary>
+
 ```text
 media/
   assets/
@@ -166,6 +169,8 @@ references/
 
 licenses/
 ```
+
+</details>
 
 ## Current scope
 
