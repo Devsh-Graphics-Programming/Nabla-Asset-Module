@@ -42,7 +42,7 @@ nam_add_channel_target(
     CHANNEL media
     REPO Devsh-Graphics-Programming/Nabla-Asset-Manifests
     TAG media
-    DESTINATION_ROOT "${CMAKE_CURRENT_BINARY_DIR}/media"
+    DESTINATION_ROOT "${CMAKE_CURRENT_BINARY_DIR}"
     ITEMS
         Stanford_Bunny.stl
         yellowflower.zip
@@ -54,7 +54,7 @@ nam_add_channel_target(
 - `CHANNEL = media`
 - `REPO = Devsh-Graphics-Programming/Nabla-Asset-Manifests`
 - `TAG = media`
-- `DESTINATION_ROOT = ${CMAKE_CURRENT_BINARY_DIR}/media`
+- `DESTINATION_ROOT = ${CMAKE_CURRENT_BINARY_DIR}`
 - `CACHE_ROOT = <ENTRY>/nabla/assets`
 - `SHOW_PROGRESS = ON`
 
