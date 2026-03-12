@@ -46,8 +46,8 @@ nam_add_channel_target(
     DESTINATION_ROOT "${CMAKE_CURRENT_BINARY_DIR}"
     NO_SYMLINKS
     ITEMS
-        Stanford_Bunny.stl
-        yellowflower.zip
+        <asset-key-1>
+        <asset-key-2>
 )
 ```
 
