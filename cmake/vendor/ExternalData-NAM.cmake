@@ -1,5 +1,10 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file LICENSE.rst or https://cmake.org/licensing for details.
+#
+# Vendored by Nabla Asset Manifests from CMake 4.2 `ExternalData.cmake`.
+# NAM patch scope is intentionally narrow:
+# - on Windows prefer hardlinks, then symlinks, then copies when exposing
+#   objects from the content-addressed store
 
 #[=======================================================================[.rst:
 ExternalData
@@ -971,33 +976,87 @@ if(NOT ExternalData_URL_TEMPLATES AND NOT ExternalData_OBJECT_STORES)
     "Neither ExternalData_URL_TEMPLATES nor ExternalData_OBJECT_STORES is set!")
 endif()
 
+function(_ExternalData_compute_link_target src dst var_tgt)
+  get_filename_component(dst_dir "${dst}" PATH)
+  set(tgt "${src}")
+  if(relative_top)
+    # Use relative path if files are close enough.
+    file(RELATIVE_PATH relsrc "${relative_top}" "${src}")
+    file(RELATIVE_PATH reldst "${relative_top}" "${dst}")
+    if(NOT IS_ABSOLUTE "${relsrc}" AND NOT "${relsrc}" MATCHES "^\\.\\./" AND
+        NOT IS_ABSOLUTE "${reldst}" AND NOT "${reldst}" MATCHES "^\\.\\./")
+      file(RELATIVE_PATH tgt "${dst_dir}" "${src}")
+    endif()
+  endif()
+  set(${var_tgt} "${tgt}" PARENT_SCOPE)
+endfunction()
+
+function(_ExternalData_try_link_mode mode src dst var_result)
+  if(mode STREQUAL "copy")
+    file(COPY_FILE "${src}" "${dst}" RESULT result INPUT_MAY_BE_RECENT)
+  elseif(mode STREQUAL "hardlink")
+    file(CREATE_LINK "${src}" "${dst}" RESULT result)
+  elseif(mode STREQUAL "symlink")
+    _ExternalData_compute_link_target("${src}" "${dst}" tgt)
+    file(CREATE_LINK "${tgt}" "${dst}" RESULT result SYMBOLIC)
+  else()
+    set(result "Unsupported ExternalData_LINK_MODE `${mode}`")
+  endif()
+  set(${var_result} "${result}" PARENT_SCOPE)
+endfunction()
+
 function(_ExternalData_link_or_copy src dst)
   # Create a temporary file first.
   get_filename_component(dst_dir "${dst}" PATH)
   file(MAKE_DIRECTORY "${dst_dir}")
   _ExternalData_random(random)
   set(tmp "${dst}.tmp${random}")
-  if(UNIX AND NOT ExternalData_NO_SYMLINKS)
-    # Create a symbolic link.
-    set(tgt "${src}")
-    if(relative_top)
-      # Use relative path if files are close enough.
-      file(RELATIVE_PATH relsrc "${relative_top}" "${src}")
-      file(RELATIVE_PATH relfile "${relative_top}" "${dst}")
-      if(NOT IS_ABSOLUTE "${relsrc}" AND NOT "${relsrc}" MATCHES "^\\.\\./" AND
-          NOT IS_ABSOLUTE "${reldst}" AND NOT "${reldst}" MATCHES "^\\.\\./")
-        file(RELATIVE_PATH tgt "${dst_dir}" "${src}")
-      endif()
-    endif()
-    # Create link (falling back to copying if there's a problem).
-    file(CREATE_LINK "${tgt}" "${tmp}" RESULT result COPY_ON_ERROR SYMBOLIC)
+  if(DEFINED ExternalData_LINK_MODE AND NOT "${ExternalData_LINK_MODE}" STREQUAL "")
+    string(TOLOWER "${ExternalData_LINK_MODE}" _ExternalData_requested_mode)
   else()
-    # Create a copy.
-    file(COPY_FILE "${src}" "${tmp}" RESULT result INPUT_MAY_BE_RECENT)
+    set(_ExternalData_requested_mode "auto")
   endif()
+
+  if(_ExternalData_requested_mode STREQUAL "auto")
+    if(WIN32)
+      set(_ExternalData_link_modes hardlink)
+      if(NOT ExternalData_NO_SYMLINKS)
+        list(APPEND _ExternalData_link_modes symlink)
+      endif()
+      list(APPEND _ExternalData_link_modes copy)
+    else()
+      if(NOT ExternalData_NO_SYMLINKS)
+        list(APPEND _ExternalData_link_modes symlink)
+      endif()
+      list(APPEND _ExternalData_link_modes hardlink copy)
+    endif()
+  elseif(_ExternalData_requested_mode STREQUAL "copy")
+    set(_ExternalData_link_modes copy)
+  elseif(_ExternalData_requested_mode STREQUAL "hardlink")
+    set(_ExternalData_link_modes hardlink)
+  elseif(_ExternalData_requested_mode STREQUAL "symlink")
+    if(ExternalData_NO_SYMLINKS)
+      message(FATAL_ERROR
+        "ExternalData_LINK_MODE=`symlink` conflicts with ExternalData_NO_SYMLINKS")
+    endif()
+    set(_ExternalData_link_modes symlink)
+  else()
+    message(FATAL_ERROR
+      "ExternalData_LINK_MODE must be one of: auto, symlink, hardlink, copy")
+  endif()
+
+  unset(result)
+  foreach(_ExternalData_mode IN LISTS _ExternalData_link_modes)
+    _ExternalData_try_link_mode("${_ExternalData_mode}" "${src}" "${tmp}" result)
+    if(NOT result)
+      break()
+    endif()
+    file(REMOVE "${tmp}")
+  endforeach()
+
   if(result)
     file(REMOVE "${tmp}")
-    message(FATAL_ERROR "Failed to create:\n  \"${tmp}\"\nfrom:\n  \"${obj}\"\nwith error:\n  ${result}")
+    message(FATAL_ERROR "Failed to create:\n  \"${tmp}\"\nfrom:\n  \"${src}\"\nwith error:\n  ${result}")
   endif()
 
   # Atomically create/replace the real destination.
@@ -1235,10 +1294,14 @@ if("${ExternalData_ACTION}" STREQUAL "fetch")
     message(FATAL_ERROR "${errorMsg}")
   endif()
   # Check if file already corresponds to the object.
-  set(stamp "-hash-stamp")
+  if(DEFINED ExternalData_STAMP_FILE AND NOT "${ExternalData_STAMP_FILE}" STREQUAL "")
+    set(stamp_file "${ExternalData_STAMP_FILE}")
+  else()
+    set(stamp_file "${file}-hash-stamp")
+  endif()
   set(file_up_to_date 0)
-  if(EXISTS "${file}" AND EXISTS "${file}${stamp}")
-    file(READ "${file}${stamp}" f_hash)
+  if(EXISTS "${file}" AND EXISTS "${stamp_file}")
+    file(READ "${stamp_file}" f_hash)
     string(STRIP "${f_hash}" f_hash)
     if("${f_hash}" STREQUAL "${hash}")
       set(file_up_to_date 1)
@@ -1253,7 +1316,7 @@ if("${ExternalData_ACTION}" STREQUAL "fetch")
   endif()
 
   # Atomically update the hash/timestamp file to record the object referenced.
-  _ExternalData_atomic_write("${file}${stamp}" "${hash}\n")
+  _ExternalData_atomic_write("${stamp_file}" "${hash}\n")
 elseif("${ExternalData_ACTION}" STREQUAL "local")
   foreach(v file name)
     if(NOT DEFINED "${v}")

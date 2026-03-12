@@ -5,8 +5,8 @@ This directory contains the consumer-side module behind the top-level
 
 It is include-only.
 
-`nam.cmake` is not a script-mode downloader. The public `ExternalData` API is
-build-graph based so the intended consumer flow is a normal configure plus
+`nam.cmake` is not a script-mode downloader. It keeps the `ExternalData`
+build-graph model so the intended consumer flow is a normal configure plus
 build.
 
 ## Consumer usage
@@ -68,6 +68,15 @@ nam_add_channel_target(
 - Windows: `%LOCALAPPDATA%`
 - Linux: `${XDG_CACHE_HOME}` or `~/.cache`
 
+## Module option
+
+- `NAM_USE_VENDORED_EXTERNALDATA = ON`
+
+By default NAM loads its vendored copy of `ExternalData.cmake`.
+
+Set `-DNAM_USE_VENDORED_EXTERNALDATA=OFF` to use the stock `ExternalData.cmake`
+shipped with the host CMake instead.
+
 ## Source of truth
 
 For input assets the source of truth is:
@@ -95,21 +104,50 @@ Consumer-side rule:
 
 ## ExternalData model
 
-The module uses only public `ExternalData` APIs:
+When `NAM_USE_VENDORED_EXTERNALDATA=ON`, NAM uses
+`cmake/vendor/ExternalData-NAM.cmake`, which is a vendored copy of CMake 4.2
+`ExternalData.cmake`.
+
+The vendored copy exists for one reason:
+
+- stock `ExternalData.cmake` copies objects into `ExternalData_BINARY_ROOT` on
+  Windows
+
+That behavior creates a full build-local copy before the file reaches the final
+consumer destination tree.
+
+The NAM patch is intentionally small:
+
+- it adds `ExternalData_LINK_MODE = auto|symlink|hardlink|copy`
+- it lets NAM call the vendored build-time script directly per asset
+- on the vendored path those modes are applied directly from the shared object
+  store into the final destination tree
+
+This keeps the shared object store model while avoiding an unnecessary physical
+copy when the host supports lightweight links.
+
+Once upstream CMake gains equivalent Windows behavior the default can be flipped
+back by changing `NAM_USE_VENDORED_EXTERNALDATA` without changing consumer call
+sites.
+
+When `NAM_USE_VENDORED_EXTERNALDATA=OFF`, NAM falls back to the stock public
+`ExternalData` flow:
 
 - `ExternalData_Expand_Arguments`
 - `ExternalData_Add_Target`
 - `ExternalData_CUSTOM_SCRIPT_<key>`
-
-It does not call private `_ExternalData_*` functions and it does not spawn
-nested `cmake.exe` processes from the module itself.
 
 The resulting model is:
 
 - one shared local object store per user
 - content-addressed objects under `.../objects/SHA256/<hash>`
 - generated `.sha256` references under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/refs/<channel>/...`
-- intermediate `ExternalData` build outputs under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/assets`
+- vendored-path metadata under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/file_stamps` and
+  `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/hash_records`
+- direct final outputs under `${DESTINATION_ROOT}/${CHANNEL}/...` when the
+  vendored module is enabled
+- a stock-module fallback path under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/assets`
+  only when `NAM_USE_VENDORED_EXTERNALDATA=OFF`
 - normal build targets for consumers
 
 During configure the module probes the current host once and selects the
@@ -122,19 +160,24 @@ Current detection order is:
 
 At build time:
 
-- `ExternalData` populates the shared object store
-- every release asset is materialized to the destination root exactly as it was
-  published, using the detected lightweight file mode when available
+- the vendored path fetches missing objects into the shared object store and
+  materializes final files directly from that store
+- on the default vendored path every release asset is exposed from the object
+  store directly into the final destination root using the configured mode
+- on the stock fallback path NAM keeps the older `.nam/<target>/assets` staging
+  step and then materializes into the destination root
 
 Passing `NO_SYMLINKS` forces copy materialization even when the host supports
 lightweight links.
+
+Explicit `symlink` mode on Windows still requires host symlink privilege.
 
 ## Logging
 
 By default the module prints only:
 
 - one short configure summary
-- the normal build-time `ExternalData` output
+- the normal build-time fetch/materialization output
 
 ## Smoke consumer
 

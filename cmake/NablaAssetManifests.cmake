@@ -5,13 +5,34 @@
 # - `.dvc` files produced by `dvc add`
 #
 # Consumer-side behavior:
-# - pure public `ExternalData` API
+# - ExternalData-compatible public API surface
 # - no hand-maintained asset catalog
 
 include_guard(GLOBAL)
 
+if (NOT DEFINED NAM_USE_VENDORED_EXTERNALDATA)
+    set(
+        NAM_USE_VENDORED_EXTERNALDATA
+        ON
+        CACHE BOOL
+        "Use the vendored ExternalData module bundled with NAM instead of the stock host module"
+    )
+endif()
+mark_as_advanced(NAM_USE_VENDORED_EXTERNALDATA)
+
 function(_nam_summary MESSAGE_TEXT)
     message(STATUS "NablaAssetManifests: ${MESSAGE_TEXT}")
+endfunction()
+
+function(_nam_include_externaldata OUT_VAR)
+    if (NAM_USE_VENDORED_EXTERNALDATA)
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/vendor/ExternalData-NAM.cmake")
+        set(_provider "vendored")
+    else()
+        include(ExternalData)
+        set(_provider "stock")
+    endif()
+    set(${OUT_VAR} "${_provider}" PARENT_SCOPE)
 endfunction()
 
 function(_nam_validate_file_link_mode MODE_VALUE OUT_VAR)
@@ -438,7 +459,8 @@ function(nam_add_channel_target)
     list(LENGTH _items _item_count)
     _nam_get_backend_kind(_backend_kind)
     _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
-    _nam_summary("configure channel target `${NAM_TARGET}`: channel=`${NAM_CHANNEL}`, repo=`${NAM_REPO}`, tag=`${NAM_TAG}`, backend=`${_backend_kind}`, cache_root=`${_cache_root}`, total=${_item_count}")
+    _nam_include_externaldata(_externaldata_provider)
+    _nam_summary("configure channel target `${NAM_TARGET}`: channel=`${NAM_CHANNEL}`, repo=`${NAM_REPO}`, tag=`${NAM_TAG}`, backend=`${_backend_kind}`, externaldata=`${_externaldata_provider}`, cache_root=`${_cache_root}`, total=${_item_count}")
 
     _nam_get_github_release_index_file(_index_file REPO "${NAM_REPO}" TAG "${NAM_TAG}" CACHE_ROOT "${NAM_CACHE_ROOT}")
 
@@ -447,16 +469,20 @@ function(nam_add_channel_target)
     file(MAKE_DIRECTORY "${_build_root}")
     file(WRITE "${_fetch_script}" "set(CMAKE_MESSAGE_LOG_LEVEL NOTICE)\nset(NAM_RELEASE_INDEX_FILE [=[${_index_file}]=])\ninclude([=[${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NablaAssetManifestsExternalDataFetch.cmake]=])\n")
 
-    include(ExternalData)
     set(ExternalData_OBJECT_STORES "${_cache_root}/objects")
     set(ExternalData_URL_TEMPLATES "ExternalDataCustomScript://NAM/%(hash)")
     set(ExternalData_CUSTOM_SCRIPT_NAM "${_fetch_script}")
     add_custom_target("${NAM_TARGET}")
     set(_refs_root "${_build_root}/refs")
     set(_externaldata_binary_root "${_build_root}/assets")
+    if (_externaldata_provider STREQUAL "vendored")
+        set(_materialization_source_root "${_cache_root}/objects/SHA256")
+    else()
+        set(_materialization_source_root "${_externaldata_binary_root}")
+    endif()
     _nam_resolve_file_link_mode(
         _file_link_mode
-        SOURCE_ROOT "${_externaldata_binary_root}"
+        SOURCE_ROOT "${_materialization_source_root}"
         DESTINATION_ROOT "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}"
     )
     if (NAM_NO_SYMLINKS)
@@ -465,7 +491,9 @@ function(nam_add_channel_target)
     _nam_summary("materialization mode for file assets: `${_file_link_mode}`")
 
     set(_asset_refs)
+    set(_asset_data_refs)
     set(_asset_relpaths)
+    set(_asset_target_paths)
     foreach(_asset IN LISTS _items)
         _nam_find_channel_asset(
             CHANNEL "${NAM_CHANNEL}"
@@ -485,25 +513,30 @@ function(nam_add_channel_target)
 
         set(_data_name "${NAM_CHANNEL}/${_relative_path}")
         set(_data_ref "${_refs_root}/${_data_name}")
+        set(_target_path "${NAM_DESTINATION_ROOT}/${_data_name}")
         get_filename_component(_link_dir "${_data_ref}" DIRECTORY)
         file(MAKE_DIRECTORY "${_link_dir}")
         file(WRITE "${_data_ref}.sha256" "${_sha256}\n")
         list(APPEND _asset_refs "DATA{${_data_ref}}")
+        list(APPEND _asset_data_refs "${_data_ref}")
         list(APPEND _asset_relpaths "${_relative_path}")
+        list(APPEND _asset_target_paths "${_target_path}")
     endforeach()
 
     if (_asset_refs)
-        set(_asset_target "${NAM_TARGET}__externaldata")
-        set(ExternalData_SOURCE_ROOT "${_refs_root}")
-        set(ExternalData_BINARY_ROOT "${_externaldata_binary_root}")
-        unset(ExternalData_NO_SYMLINKS)
-        set(_old_suppress_dev "${CMAKE_SUPPRESS_DEVELOPER_WARNINGS}")
-        set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1)
-        ExternalData_Expand_Arguments("${_asset_target}" _asset_expanded ${_asset_refs})
-        set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS "${_old_suppress_dev}")
-        ExternalData_Add_Target("${_asset_target}" SHOW_PROGRESS "${NAM_SHOW_PROGRESS}")
-        set(_externaldata_config "${CMAKE_CURRENT_BINARY_DIR}/${_asset_target}_config.cmake")
-        if (EXISTS "${_externaldata_config}")
+        if (_externaldata_provider STREQUAL "vendored")
+            set(ExternalData_LINK_MODE "${_file_link_mode}")
+            set(ExternalData_TIMEOUT_INACTIVITY "")
+            set(ExternalData_TIMEOUT_ABSOLUTE "")
+            set(ExternalData_NO_SYMLINKS "")
+            string(CONCAT _ExternalData_CONFIG_CODE
+                "set(ExternalData_CUSTOM_SCRIPT_NAM [=[${_fetch_script}]=])")
+            set(_externaldata_config "${CMAKE_CURRENT_BINARY_DIR}/${NAM_TARGET}__externaldata_config.cmake")
+            configure_file(
+                "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/vendor/ExternalData_config.cmake.in"
+                "${_externaldata_config}"
+                @ONLY
+            )
             if (NAM_VERBOSE)
                 set(_externaldata_log_level "STATUS")
             else()
@@ -511,27 +544,70 @@ function(nam_add_channel_target)
             endif()
             file(READ "${_externaldata_config}" _externaldata_config_contents)
             file(WRITE "${_externaldata_config}" "set(CMAKE_MESSAGE_LOG_LEVEL ${_externaldata_log_level})\n${_externaldata_config_contents}")
-        endif()
-        add_dependencies("${NAM_TARGET}" "${_asset_target}")
 
-        list(LENGTH _asset_expanded _asset_expanded_count)
-        math(EXPR _asset_last "${_asset_expanded_count} - 1")
-        foreach(_index RANGE ${_asset_last})
-            list(GET _asset_expanded ${_index} _expanded_path)
-            list(GET _asset_relpaths ${_index} _relative_path)
-            set(_target_path "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}/${_relative_path}")
-            set(_stamp "${_build_root}/file_stamps/${_index}.stamp")
-            get_filename_component(_stamp_dir "${_stamp}" DIRECTORY)
-            file(MAKE_DIRECTORY "${_stamp_dir}")
-            add_custom_command(
-                OUTPUT "${_stamp}"
-                COMMAND "${CMAKE_COMMAND}" -DINPUT=${_expanded_path} -DDESTINATION=${_target_path} -DLINK_MODE=${_file_link_mode} -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NablaAssetManifestsMaterialize.cmake"
-                COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
-                DEPENDS "${_expanded_path}"
-                VERBATIM
-            )
-            list(APPEND _materialize_stamps "${_stamp}")
-        endforeach()
+            list(LENGTH _asset_data_refs _asset_count)
+            math(EXPR _asset_last "${_asset_count} - 1")
+            foreach(_index RANGE ${_asset_last})
+                list(GET _asset_data_refs ${_index} _data_ref)
+                list(GET _asset_target_paths ${_index} _target_path)
+                set(_stamp "${_build_root}/file_stamps/${_index}.stamp")
+                set(_hash_record "${_build_root}/hash_records/${_index}.txt")
+                get_filename_component(_stamp_dir "${_stamp}" DIRECTORY)
+                get_filename_component(_hash_record_dir "${_hash_record}" DIRECTORY)
+                file(MAKE_DIRECTORY "${_stamp_dir}")
+                file(MAKE_DIRECTORY "${_hash_record_dir}")
+                add_custom_command(
+                    OUTPUT "${_stamp}" "${_target_path}" "${_hash_record}"
+                    COMMAND "${CMAKE_COMMAND}" -Drelative_top=${CMAKE_BINARY_DIR} -Dfile=${_target_path} -Dname=${_data_ref} -Dexts=.sha256 -DExternalData_STAMP_FILE=${_hash_record} -DExternalData_ACTION=fetch -DExternalData_SHOW_PROGRESS=${NAM_SHOW_PROGRESS} -DExternalData_CONFIG=${_externaldata_config} -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/vendor/ExternalData-NAM.cmake"
+                    COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
+                    MAIN_DEPENDENCY "${_data_ref}.sha256"
+                    DEPENDS "${_fetch_script}" "${_externaldata_config}"
+                    VERBATIM
+                )
+                list(APPEND _materialize_stamps "${_stamp}")
+            endforeach()
+        else()
+            set(_asset_target "${NAM_TARGET}__externaldata")
+            set(ExternalData_SOURCE_ROOT "${_refs_root}")
+            set(ExternalData_BINARY_ROOT "${_externaldata_binary_root}")
+            unset(ExternalData_LINK_MODE)
+            unset(ExternalData_NO_SYMLINKS)
+            set(_old_suppress_dev "${CMAKE_SUPPRESS_DEVELOPER_WARNINGS}")
+            set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1)
+            ExternalData_Expand_Arguments("${_asset_target}" _asset_expanded ${_asset_refs})
+            set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS "${_old_suppress_dev}")
+            ExternalData_Add_Target("${_asset_target}" SHOW_PROGRESS "${NAM_SHOW_PROGRESS}")
+            set(_externaldata_config "${CMAKE_CURRENT_BINARY_DIR}/${_asset_target}_config.cmake")
+            if (EXISTS "${_externaldata_config}")
+                if (NAM_VERBOSE)
+                    set(_externaldata_log_level "STATUS")
+                else()
+                    set(_externaldata_log_level "NOTICE")
+                endif()
+                file(READ "${_externaldata_config}" _externaldata_config_contents)
+                file(WRITE "${_externaldata_config}" "set(CMAKE_MESSAGE_LOG_LEVEL ${_externaldata_log_level})\n${_externaldata_config_contents}")
+            endif()
+            add_dependencies("${NAM_TARGET}" "${_asset_target}")
+
+            list(LENGTH _asset_expanded _asset_expanded_count)
+            math(EXPR _asset_last "${_asset_expanded_count} - 1")
+            foreach(_index RANGE ${_asset_last})
+                list(GET _asset_expanded ${_index} _expanded_path)
+                set(_stamp "${_build_root}/file_stamps/${_index}.stamp")
+                get_filename_component(_stamp_dir "${_stamp}" DIRECTORY)
+                file(MAKE_DIRECTORY "${_stamp_dir}")
+                list(GET _asset_relpaths ${_index} _relative_path)
+                set(_target_path "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}/${_relative_path}")
+                add_custom_command(
+                    OUTPUT "${_stamp}"
+                    COMMAND "${CMAKE_COMMAND}" -DINPUT=${_expanded_path} -DDESTINATION=${_target_path} -DLINK_MODE=${_file_link_mode} -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NablaAssetManifestsMaterialize.cmake"
+                    COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
+                    DEPENDS "${_expanded_path}"
+                    VERBATIM
+                )
+                list(APPEND _materialize_stamps "${_stamp}")
+            endforeach()
+        endif()
     endif()
 
     if (_materialize_stamps)
