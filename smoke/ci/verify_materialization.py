@@ -57,37 +57,54 @@ def main() -> int:
     if not media_root.exists():
         raise SystemExit(f"Missing materialized tree: {media_root}")
 
-    bunny_path = media_root / "assets/mesh/standalone/stl/Stanford_Bunny.stl"
-    yellowflower_path = media_root / "assets/mesh/bundles/obj/yellowflower.zip"
-    required_paths = (bunny_path, yellowflower_path)
-    for path in required_paths:
-        if not path.exists():
-            raise SystemExit(f"Missing required file: {path}")
-
-    files = list(iter_files(media_root))
+    files = sorted(iter_files(media_root))
     if not files:
         raise SystemExit(f"No files found under {media_root}")
 
     counts = {"symlink": 0, "hardlink": 0, "copy": 0}
     logical_size = 0
     estimated_extra_size = 0
+    largest_files: list[dict[str, object]] = []
+    mismatches: list[str] = []
+    zip_file_count = 0
+    invalid_zip_files: list[str] = []
     for path in files:
         materialization, file_size, extra_size = classify_materialization(path)
+        relative_path = path.relative_to(build_dir).as_posix()
         counts[materialization] += 1
         logical_size += file_size
         estimated_extra_size += extra_size
-
-    sample_modes: dict[str, str] = {}
-    for path in required_paths:
-        materialization, _, _ = classify_materialization(path)
-        sample_modes[str(path.relative_to(build_dir))] = materialization
         if materialization != args.expected_mode:
-            raise SystemExit(
-                f"Expected `{args.expected_mode}` for {path.name} but found `{materialization}`"
-            )
+            mismatches.append(f"{relative_path}={materialization}")
+        if path.suffix.lower() == ".zip":
+            zip_file_count += 1
+            if not zipfile.is_zipfile(path):
+                invalid_zip_files.append(relative_path)
+        largest_files.append(
+            {
+                "path": relative_path,
+                "mode": materialization,
+                "size_bytes": file_size,
+                "size_human": format_bytes(file_size),
+            }
+        )
 
-    if not zipfile.is_zipfile(yellowflower_path):
-        raise SystemExit(f"Expected a zip payload at {yellowflower_path}")
+    largest_files.sort(key=lambda entry: (-int(entry["size_bytes"]), str(entry["path"])))
+    largest_files = largest_files[:5]
+
+    if mismatches:
+        preview = ", ".join(mismatches[:5])
+        raise SystemExit(
+            f"Expected `{args.expected_mode}` for all {len(files)} files under {media_root} "
+            f"but found {len(mismatches)} mismatches. First mismatches: {preview}"
+        )
+
+    if invalid_zip_files:
+        preview = ", ".join(invalid_zip_files[:5])
+        raise SystemExit(
+            f"Expected every materialized .zip payload to stay a valid zip file, "
+            f"but found {len(invalid_zip_files)} invalid files. First invalid entries: {preview}"
+        )
 
     summary = {
         "build_dir": str(build_dir),
@@ -99,7 +116,8 @@ def main() -> int:
         "logical_size_human": format_bytes(logical_size),
         "estimated_extra_size_bytes": estimated_extra_size,
         "estimated_extra_size_human": format_bytes(estimated_extra_size),
-        "sample_modes": sample_modes,
+        "zip_file_count": zip_file_count,
+        "largest_files": largest_files,
     }
 
     print(json.dumps(summary, indent=2, sort_keys=True))
@@ -114,9 +132,14 @@ def main() -> int:
             f"- Counts: `symlink={counts['symlink']}` `hardlink={counts['hardlink']}` `copy={counts['copy']}`",
             f"- Logical size: `{format_bytes(logical_size)}`",
             f"- Estimated extra size in build tree: `{format_bytes(estimated_extra_size)}`",
-            f"- Stanford_Bunny.stl: `{sample_modes[str(bunny_path.relative_to(build_dir))]}`",
-            f"- yellowflower.zip: `{sample_modes[str(yellowflower_path.relative_to(build_dir))]}`",
+            f"- Valid zip payloads: `{zip_file_count}`",
         ]
+        if largest_files:
+            lines.extend(("", "### Largest materialized files"))
+            for entry in largest_files:
+                lines.append(
+                    f"- `{entry['path']}` `{entry['mode']}` `{entry['size_human']}`"
+                )
         Path(step_summary).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     return 0

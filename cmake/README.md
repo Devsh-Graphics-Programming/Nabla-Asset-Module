@@ -194,7 +194,7 @@ The smoke verification script then reports:
 - per-tree materialization counts
 - logical size of the materialized tree
 - estimated extra disk cost of the chosen mode
-- explicit sample checks for `Stanford_Bunny.stl` and `yellowflower.zip`
+- valid zip payload counts and generic largest-file stats
 
 ## Maintainer flow
 
