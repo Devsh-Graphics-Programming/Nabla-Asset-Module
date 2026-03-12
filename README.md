@@ -163,6 +163,8 @@ media/
 references/
   perf/
     meshloaders/
+
+licenses/
 ```
 
 ## Current scope
