@@ -43,6 +43,7 @@ nam_add_channel_target(
     REPO Devsh-Graphics-Programming/Nabla-Asset-Manifests
     TAG media
     DESTINATION_ROOT "${CMAKE_CURRENT_BINARY_DIR}"
+    NO_SYMLINKS
     ITEMS
         Stanford_Bunny.stl
         yellowflower.zip
@@ -102,11 +103,21 @@ The resulting model is:
 - normal build targets for consumers
 - archive extraction as an explicit build step for bundle payloads
 
+During configure the module probes the current host once and selects the
+lightest supported file materialization mode. On the current Windows host this
+resolves to `hardlink`.
+
 At build time:
 
 - `ExternalData` populates the shared object store
-- standalone files are materialized to the destination root
-- bundle archives are materialized and extracted to the destination root
+- standalone files are materialized to the destination root using the detected
+  lightweight file mode when available
+- bundle archives are extracted once into a shared extracted cache and then
+  materialized to the destination root using the same lightweight file mode for
+  the extracted files
+
+Passing `NO_SYMLINKS` forces copy materialization even when the host supports
+lightweight links.
 
 ## Logging
 
