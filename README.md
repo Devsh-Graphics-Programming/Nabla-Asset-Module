@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/actions/workflows/smoke.yml">
-    <img src="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/actions/workflows/smoke.yml/badge.svg" alt="Build Status" /></a>
+    <img src="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/actions/workflows/smoke.yml/badge.svg" alt="Smoke Status" /></a>
   <a href="https://opensource.org/licenses/Apache-2.0">
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" /></a>
   <a href="https://discord.gg/krsBcABm7u">
@@ -24,6 +24,19 @@ The current Nabla examples layout at:
 looks deceptively harmless because it is "just for examples", but it is already enough to create real operational problems. This is not a theoretical warning. The pattern is already known in practice to slow normal workflows down, make asset maintenance heavier than it should be, work against setups such as Git worktrees, and couple ordinary source-control operations to large binary payload churn. That is a design mistake for asset distribution, even in an examples-only repository, and this pattern should be avoided in other projects as well.
 
 The core argument is simple. Source control should keep code and small reviewable metadata. Heavy payloads should stay outside normal Git history.
+
+Today this repository provides:
+
+- the public consumer entrypoint `nam_add_channel_target(...)`
+- consumer integration based only on public `CMake ExternalData` APIs
+- `GitHub Release assets` as the first backend
+- standalone payloads published as files
+- bundle payloads published as `zip` files and kept as `zip` files in the build tree
+- build-time materialization that auto-detects the lightest supported file mode once per configure
+- a `NO_SYMLINKS` escape hatch for forced copy mode
+- a local `smoke/` consumer plus a `2 x 3` Windows/Linux CI matrix for `symlink`, `hardlink`, and `copy`
+
+For consumer details see [cmake/README.md](cmake/README.md).
 
 ## Model
 

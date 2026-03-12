@@ -57,8 +57,11 @@ nam_add_channel_target(
 - `REPO = Devsh-Graphics-Programming/Nabla-Asset-Manifests`
 - `TAG = media`
 - `DESTINATION_ROOT = ${CMAKE_CURRENT_BINARY_DIR}`
+- `ITEMS = <all asset keys in CHANNEL>`
 - `CACHE_ROOT = <ENTRY>/nabla/assets`
 - `SHOW_PROGRESS = ON`
+- `NO_SYMLINKS = OFF`
+- `VERBOSE = OFF`
 
 `<ENTRY>` resolves per platform:
 
@@ -105,12 +108,17 @@ The resulting model is:
 
 - one shared local object store per user
 - content-addressed objects under `.../objects/SHA256/<hash>`
-- generated content links under `nam-data/<target>/` in the consumer source tree
+- generated `.sha256` references under `<channel>/...` in the consumer source tree
+- intermediate `ExternalData` build outputs under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/assets`
 - normal build targets for consumers
 
 During configure the module probes the current host once and selects the
-lightest supported file materialization mode. On the current Windows host this
-resolves to `hardlink`.
+lightest supported file materialization mode.
+
+Current detection order is:
+
+- Windows: `hardlink`, then `symlink`, then `copy`
+- non-Windows: `symlink`, then `hardlink`, then `copy`
 
 At build time:
 
@@ -127,6 +135,66 @@ By default the module prints only:
 
 - one short configure summary
 - the normal build-time `ExternalData` output
+
+## Smoke consumer
+
+The repository also includes a minimal smoke consumer under `smoke/`.
+
+Its local options are:
+
+- `NAM_SMOKE_LINK_MODE = auto|symlink|hardlink|copy`
+- `NAM_SMOKE_CACHE_ROOT = <path>`
+- `NAM_SMOKE_NO_SYMLINKS = ON|OFF`
+
+Those options are for smoke verification only. They are not part of the public
+consumer module API.
+
+The GitHub Actions workflow under `.github/workflows/smoke.yml` uses that smoke
+consumer to verify:
+
+- Windows and Linux runners
+- explicit `symlink`, `hardlink`, and `copy` modes
+- shared cache reuse via `${{ github.workspace }}/.nam-cache`
+- post-build size and materialization statistics
+
+Typical local smoke runs are:
+
+```powershell
+cmake -S smoke -B smoke/build
+cmake --build smoke/build --config Debug --target media -- /m:1
+```
+
+```bash
+cmake -S smoke -B smoke/build
+cmake --build smoke/build --target media -- -j1
+```
+
+Forced copy mode:
+
+```powershell
+cmake -S smoke -B smoke/build -DNAM_SMOKE_NO_SYMLINKS=ON
+cmake --build smoke/build --config Debug --target media -- /m:1
+```
+
+```bash
+cmake -S smoke -B smoke/build -DNAM_SMOKE_NO_SYMLINKS=ON
+cmake --build smoke/build --target media -- -j1
+```
+
+Explicit smoke-only mode overrides:
+
+```powershell
+cmake -S smoke -B smoke/build -DNAM_SMOKE_LINK_MODE=symlink
+cmake -S smoke -B smoke/build -DNAM_SMOKE_LINK_MODE=hardlink
+cmake -S smoke -B smoke/build -DNAM_SMOKE_LINK_MODE=copy
+```
+
+The smoke verification script then reports:
+
+- per-tree materialization counts
+- logical size of the materialized tree
+- estimated extra disk cost of the chosen mode
+- explicit sample checks for `Stanford_Bunny.stl` and `yellowflower.zip`
 
 ## Maintainer flow
 
