@@ -9,6 +9,8 @@ It is meant to be used in two ways:
 - include [nam.cmake](../nam.cmake) from another CMake project
 - execute [nam.cmake](../nam.cmake) through `cmake -P`
 
+The current implementation resolves consumer requests through `CMake ExternalData`.
+
 ## Consumer usage
 
 ### Include mode with defaults
@@ -81,6 +83,7 @@ The module reads those `.dvc` files and derives:
 - the logical relative path inside the channel
 - whether a payload is a standalone file or a bundle directory
 - the expected release asset name
+- the content hash used by the shared `ExternalData` object store
 
 Current publishing convention:
 
@@ -89,6 +92,8 @@ Current publishing convention:
 - the current backend is `github_release`
 - backend-specific resolution is isolated inside the module so the public
   consumer API does not have to change when the storage backend changes later
+- once the backend digest is known, the payload is fetched into the shared
+  `ExternalData` object store and then materialized from there
 
 ## Default arguments
 
@@ -111,14 +116,14 @@ If `DESTINATION_ROOT` is not provided:
 
 Materialization is separate from fetch:
 
-- `fetch` populates the shared blob cache
+- `fetch` populates the shared `ExternalData` object store
 - `materialize` creates consumer-visible local files or extracted bundle trees
 
 Incremental behavior is intentionally cheap:
 
 - the release metadata is queried once per CMake process
-- fetched blobs get a sidecar digest file in the cache
-- if the cached blob already matches the current backend digest it is reused
+- the shared object store is content-addressed through `ExternalData`
+- once an object is already present in that store the next fetch reuses it
   without re-downloading
 
 Logging behavior is intentionally split into two levels:

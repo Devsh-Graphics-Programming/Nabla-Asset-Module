@@ -218,6 +218,11 @@ function(_nam_release_json_cache_key OUT_VAR REPO TAG)
     set(${OUT_VAR} "NAM_RELEASE_JSON_${_repo_key}_${TAG}" PARENT_SCOPE)
 endfunction()
 
+function(_nam_release_index_cache_key OUT_VAR REPO TAG)
+    string(REPLACE "/" "__" _repo_key "${REPO}")
+    set(${OUT_VAR} "NAM_RELEASE_INDEX_${_repo_key}_${TAG}" PARENT_SCOPE)
+endfunction()
+
 function(_nam_get_backend_kind OUT_VAR)
     if (DEFINED NAM_BACKEND_KIND AND NOT "${NAM_BACKEND_KIND}" STREQUAL "")
         set(${OUT_VAR} "${NAM_BACKEND_KIND}" PARENT_SCOPE)
@@ -263,6 +268,52 @@ function(_nam_get_github_release_json OUT_JSON_VAR)
     endif()
     set_property(GLOBAL PROPERTY "${_cache_key}" "${_json}")
     set(${OUT_JSON_VAR} "${_json}" PARENT_SCOPE)
+endfunction()
+
+function(_nam_get_github_release_index_file OUT_VAR)
+    set(options)
+    set(oneValueArgs REPO TAG CACHE_ROOT)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if (NOT DEFINED NAM_REPO OR "${NAM_REPO}" STREQUAL "")
+        set(NAM_REPO "Devsh-Graphics-Programming/Nabla-Asset-Manifests")
+    endif()
+    if (NOT DEFINED NAM_TAG OR "${NAM_TAG}" STREQUAL "")
+        set(NAM_TAG "media")
+    endif()
+
+    _nam_release_index_cache_key(_cache_key "${NAM_REPO}" "${NAM_TAG}")
+    get_property(_cached_index GLOBAL PROPERTY "${_cache_key}")
+    if (_cached_index)
+        set(${OUT_VAR} "${_cached_index}" PARENT_SCOPE)
+        return()
+    endif()
+
+    _nam_get_github_release_json(_json REPO "${NAM_REPO}" TAG "${NAM_TAG}")
+    _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
+    set(_meta_dir "${_cache_root}/meta/${NAM_REPO}")
+    file(MAKE_DIRECTORY "${_meta_dir}")
+    set(_index_file "${_meta_dir}/${NAM_TAG}.assets")
+
+    string(JSON _asset_count LENGTH "${_json}" assets)
+    if (_asset_count STREQUAL "")
+        message(FATAL_ERROR "NablaAssetManifests: release `${NAM_TAG}` has no assets")
+    endif()
+
+    math(EXPR _asset_last "${_asset_count} - 1")
+    set(_index_lines "")
+    foreach(_index RANGE ${_asset_last})
+        string(JSON _name GET "${_json}" assets ${_index} name)
+        string(JSON _digest GET "${_json}" assets ${_index} digest)
+        string(JSON _url GET "${_json}" assets ${_index} browser_download_url)
+        string(REPLACE "sha256:" "" _digest "${_digest}")
+        string(TOLOWER "${_digest}" _digest)
+        string(APPEND _index_lines "${_digest}|${_name}|${_url}\n")
+    endforeach()
+
+    file(WRITE "${_index_file}" "${_index_lines}")
+    set_property(GLOBAL PROPERTY "${_cache_key}" "${_index_file}")
+    set(${OUT_VAR} "${_index_file}" PARENT_SCOPE)
 endfunction()
 
 function(_nam_find_github_release_asset OUT_DIGEST_VAR OUT_URL_VAR)
@@ -329,6 +380,94 @@ function(_nam_resolve_remote_asset OUT_DIGEST_VAR OUT_URL_VAR)
     message(FATAL_ERROR "NablaAssetManifests: unsupported backend `${_backend_kind}`")
 endfunction()
 
+function(_nam_get_externaldata_module OUT_VAR)
+    if (NOT DEFINED CMAKE_ROOT OR "${CMAKE_ROOT}" STREQUAL "")
+        message(FATAL_ERROR "NablaAssetManifests: CMAKE_ROOT is not available")
+    endif()
+    set(${OUT_VAR} "${CMAKE_ROOT}/Modules/ExternalData.cmake" PARENT_SCOPE)
+endfunction()
+
+function(_nam_get_externaldata_object_store OUT_VAR)
+    set(options)
+    set(oneValueArgs CACHE_ROOT)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
+    set(${OUT_VAR} "${_cache_root}/objects" PARENT_SCOPE)
+endfunction()
+
+function(_nam_get_externaldata_link_root OUT_VAR)
+    set(options)
+    set(oneValueArgs CACHE_ROOT REPO TAG CHANNEL)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
+    set(${OUT_VAR} "${_cache_root}/links/${NAM_REPO}/${NAM_TAG}/${NAM_CHANNEL}" PARENT_SCOPE)
+endfunction()
+
+function(_nam_write_content_link OUT_BASE_VAR)
+    set(options)
+    set(oneValueArgs CACHE_ROOT REPO TAG CHANNEL RELATIVE_PATH SHA256)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    _nam_get_externaldata_link_root(_link_root CACHE_ROOT "${NAM_CACHE_ROOT}" REPO "${NAM_REPO}" TAG "${NAM_TAG}" CHANNEL "${NAM_CHANNEL}")
+    set(_base "${_link_root}/${NAM_RELATIVE_PATH}")
+    get_filename_component(_base_dir "${_base}" DIRECTORY)
+    file(MAKE_DIRECTORY "${_base_dir}")
+    file(WRITE "${_base}.sha256" "${NAM_SHA256}\n")
+    set(${OUT_BASE_VAR} "${_base}" PARENT_SCOPE)
+endfunction()
+
+function(_nam_externaldata_fetch_to_path)
+    set(options VERBOSE)
+    set(oneValueArgs CACHE_ROOT REPO TAG CHANNEL RELATIVE_PATH SHA256 OUTPUT_PATH)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if (NOT NAM_OUTPUT_PATH)
+        message(FATAL_ERROR "NablaAssetManifests: OUTPUT_PATH is required")
+    endif()
+
+    _nam_get_externaldata_module(_externaldata_module)
+    _nam_get_externaldata_object_store(_object_store CACHE_ROOT "${NAM_CACHE_ROOT}")
+    _nam_get_github_release_index_file(_index_file REPO "${NAM_REPO}" TAG "${NAM_TAG}" CACHE_ROOT "${NAM_CACHE_ROOT}")
+    _nam_write_content_link(_link_base
+        CACHE_ROOT "${NAM_CACHE_ROOT}"
+        REPO "${NAM_REPO}"
+        TAG "${NAM_TAG}"
+        CHANNEL "${NAM_CHANNEL}"
+        RELATIVE_PATH "${NAM_RELATIVE_PATH}"
+        SHA256 "${NAM_SHA256}"
+    )
+
+    get_filename_component(_output_dir "${NAM_OUTPUT_PATH}" DIRECTORY)
+    file(MAKE_DIRECTORY "${_output_dir}")
+
+    set(_log_level "NOTICE")
+    if (NAM_VERBOSE)
+        set(_log_level "STATUS")
+    endif()
+
+    execute_process(
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "--log-level=${_log_level}"
+            "-DExternalData_ACTION=fetch"
+            "-DExternalData_OBJECT_STORES=${_object_store}"
+            "-DExternalData_URL_TEMPLATES=ExternalDataCustomScript://NAM/%(hash)"
+            "-DExternalData_CUSTOM_SCRIPT_NAM=${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NablaAssetManifestsExternalDataFetch.cmake"
+            "-DNAM_RELEASE_INDEX_FILE=${_index_file}"
+            "-Dfile=${NAM_OUTPUT_PATH}"
+            "-Dname=${_link_base}"
+            "-Dexts=.sha256"
+            "-DExternalData_SHOW_PROGRESS=ON"
+            "-P" "${_externaldata_module}"
+        RESULT_VARIABLE _result
+    )
+    if (NOT _result EQUAL 0)
+        message(FATAL_ERROR "NablaAssetManifests: ExternalData fetch failed for `${NAM_RELATIVE_PATH}`")
+    endif()
+endfunction()
+
 function(nam_fetch_asset)
     set(options VERBOSE)
     set(oneValueArgs CHANNEL REPO TAG ASSET CACHE_ROOT OUT_FILE OUT_STATUS)
@@ -367,73 +506,37 @@ function(nam_fetch_asset)
         REPO "${NAM_REPO}"
         TAG "${NAM_TAG}"
         RELEASE_ASSET "${_release_asset}"
-        ${_verbose_args}
     )
     string(TOLOWER "${_sha256}" _sha256)
 
     _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
-    set(_cache_file "${_cache_root}/blobs/${NAM_REPO}/${NAM_TAG}/${_release_asset}")
-    set(_digest_file "${_cache_file}.sha256")
-    get_filename_component(_cache_dir "${_cache_file}" DIRECTORY)
-    file(MAKE_DIRECTORY "${_cache_dir}")
+    set(_stage_file "${_cache_root}/staging/${NAM_REPO}/${NAM_TAG}/${_release_asset}")
 
     _nam_log("${NAM_VERBOSE}" "fetch `${NAM_ASSET}` as `${_release_asset}` into cache root `${_cache_root}`")
+    _nam_get_externaldata_object_store(_object_store CACHE_ROOT "${NAM_CACHE_ROOT}")
+    set(_object_file "${_object_store}/SHA256/${_sha256}")
 
-    set(_need_download TRUE)
     set(_fetch_status "downloaded")
-    if (EXISTS "${_cache_file}")
-        if (EXISTS "${_digest_file}")
-            file(READ "${_digest_file}" _cached_sha256)
-            string(STRIP "${_cached_sha256}" _cached_sha256)
-            string(TOLOWER "${_cached_sha256}" _cached_sha256)
-        else()
-            set(_cached_sha256 "")
-        endif()
-
-        if (_cached_sha256 STREQUAL "${_sha256}")
-            _nam_log("${NAM_VERBOSE}" "cache hit for `${NAM_ASSET}`")
-            set(_need_download FALSE)
-            set(_fetch_status "cache_hit")
-        else()
-            if (NOT _cached_sha256 STREQUAL "")
-                _nam_log("${NAM_VERBOSE}" "cache sidecar digest mismatch for `${NAM_ASSET}`")
-            endif()
-            file(SHA256 "${_cache_file}" _existing_sha256)
-            string(TOLOWER "${_existing_sha256}" _existing_sha256)
-            if (_existing_sha256 STREQUAL "${_sha256}")
-                file(WRITE "${_digest_file}" "${_sha256}\n")
-                _nam_log("${NAM_VERBOSE}" "cache hit after hash verification for `${NAM_ASSET}`")
-                set(_need_download FALSE)
-                set(_fetch_status "cache_hit")
-            else()
-                _nam_log("${NAM_VERBOSE}" "cache miss for `${NAM_ASSET}` because digest changed")
-                file(REMOVE "${_cache_file}")
-                if (EXISTS "${_digest_file}")
-                    file(REMOVE "${_digest_file}")
-                endif()
-            endif()
-        endif()
+    if (EXISTS "${_object_file}")
+        _nam_log("${NAM_VERBOSE}" "cache hit for `${NAM_ASSET}`")
+        set(_fetch_status "cache_hit")
+    else()
+        _nam_log("${NAM_VERBOSE}" "downloading `${_release_asset}` from backend `${NAM_TAG}` through ExternalData")
     endif()
 
-    if (_need_download)
-        _nam_log("${NAM_VERBOSE}" "downloading `${_release_asset}` from backend `${NAM_TAG}`")
-        file(DOWNLOAD
-            "${_url}"
-            "${_cache_file}"
-            EXPECTED_HASH "SHA256=${_sha256}"
-            STATUS _status
-            SHOW_PROGRESS
-        )
-        list(GET _status 0 _status_code)
-        if (NOT _status_code EQUAL 0)
-            message(FATAL_ERROR "NablaAssetManifests: failed to fetch `${NAM_ASSET}` from channel `${NAM_CHANNEL}`")
-        endif()
-        file(WRITE "${_digest_file}" "${_sha256}\n")
-        _nam_log("${NAM_VERBOSE}" "stored `${NAM_ASSET}` in `${_cache_file}`")
-    endif()
+    _nam_externaldata_fetch_to_path(
+        CACHE_ROOT "${NAM_CACHE_ROOT}"
+        REPO "${NAM_REPO}"
+        TAG "${NAM_TAG}"
+        CHANNEL "${NAM_CHANNEL}"
+        RELATIVE_PATH "${_relative_path}"
+        SHA256 "${_sha256}"
+        OUTPUT_PATH "${_stage_file}"
+        ${_verbose_args}
+    )
 
     if (DEFINED NAM_OUT_FILE AND NOT "${NAM_OUT_FILE}" STREQUAL "")
-        set(${NAM_OUT_FILE} "${_cache_file}" PARENT_SCOPE)
+        set(${NAM_OUT_FILE} "${_stage_file}" PARENT_SCOPE)
     endif()
     if (DEFINED NAM_OUT_STATUS AND NOT "${NAM_OUT_STATUS}" STREQUAL "")
         set(${NAM_OUT_STATUS} "${_fetch_status}" PARENT_SCOPE)
@@ -475,36 +578,57 @@ function(nam_materialize_asset)
         list(APPEND _verbose_args VERBOSE)
     endif()
 
-    nam_fetch_asset(
-        CHANNEL "${NAM_CHANNEL}"
-        REPO "${NAM_REPO}"
-        TAG "${NAM_TAG}"
-        ASSET "${NAM_ASSET}"
-        CACHE_ROOT "${NAM_CACHE_ROOT}"
-        OUT_FILE _cache_file
-        ${_verbose_args}
-    )
-
     set(_target_path "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}/${_relative_path}")
     _nam_log("${NAM_VERBOSE}" "materialize `${NAM_ASSET}` to `${_target_path}`")
     if (_kind STREQUAL "file")
-        get_filename_component(_target_dir "${_target_path}" DIRECTORY)
-        file(MAKE_DIRECTORY "${_target_dir}")
         if (EXISTS "${_target_path}" OR IS_SYMLINK "${_target_path}")
             file(REMOVE "${_target_path}")
         endif()
-        if (NAM_MODE STREQUAL "copy")
-            file(COPY_FILE "${_cache_file}" "${_target_path}" ONLY_IF_DIFFERENT)
-        else()
-            file(CREATE_LINK "${_cache_file}" "${_target_path}" SYMBOLIC COPY_ON_ERROR)
-        endif()
+        _nam_resolve_remote_asset(
+            _sha256
+            _url
+            REPO "${NAM_REPO}"
+            TAG "${NAM_TAG}"
+            RELEASE_ASSET "${_release_asset}"
+        )
+        string(TOLOWER "${_sha256}" _sha256)
+        _nam_externaldata_fetch_to_path(
+            CACHE_ROOT "${NAM_CACHE_ROOT}"
+            REPO "${NAM_REPO}"
+            TAG "${NAM_TAG}"
+            CHANNEL "${NAM_CHANNEL}"
+            RELATIVE_PATH "${_relative_path}"
+            SHA256 "${_sha256}"
+            OUTPUT_PATH "${_target_path}"
+            ${_verbose_args}
+        )
         set(_materialize_status "file")
     elseif(_kind STREQUAL "archive")
+        _nam_resolve_remote_asset(
+            _sha256
+            _url
+            REPO "${NAM_REPO}"
+            TAG "${NAM_TAG}"
+            RELEASE_ASSET "${_release_asset}"
+        )
+        string(TOLOWER "${_sha256}" _sha256)
+        _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
+        set(_archive_stage "${_cache_root}/staging/${NAM_REPO}/${NAM_TAG}/${_release_asset}")
+        _nam_externaldata_fetch_to_path(
+            CACHE_ROOT "${NAM_CACHE_ROOT}"
+            REPO "${NAM_REPO}"
+            TAG "${NAM_TAG}"
+            CHANNEL "${NAM_CHANNEL}"
+            RELATIVE_PATH "${_relative_path}.zipcontent"
+            SHA256 "${_sha256}"
+            OUTPUT_PATH "${_archive_stage}"
+            ${_verbose_args}
+        )
         if (EXISTS "${_target_path}")
             file(REMOVE_RECURSE "${_target_path}")
         endif()
         file(MAKE_DIRECTORY "${_target_path}")
-        file(ARCHIVE_EXTRACT INPUT "${_cache_file}" DESTINATION "${_target_path}")
+        file(ARCHIVE_EXTRACT INPUT "${_archive_stage}" DESTINATION "${_target_path}")
         set(_materialize_status "archive")
     else()
         message(FATAL_ERROR "NablaAssetManifests: unsupported asset kind `${_kind}`")
