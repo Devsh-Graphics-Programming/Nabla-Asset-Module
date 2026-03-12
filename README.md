@@ -20,6 +20,7 @@ The intended direction is:
 - backend-agnostic consumers
 - one shared local object store per user
 - normal local files materialized into build trees for examples and tests
+- shared blob reuse across many build directories, many checkouts, and even many independent repositories
 
 At a high level this follows the same pattern used by mature package and artifact ecosystems:
 - manifest plus URL plus checksum in `winget`
@@ -54,11 +55,9 @@ The strongest reasons are:
 
 [Gregory Szorc](https://gregoryszorc.com/resume.pdf), former technical steward of the Firefox build system at Mozilla and maintainer of Firefox version control infrastructure. Quote source: [Why you shouldn't use Git LFS](https://gregoryszorc.com/blog/2021/05/12/why-you-shouldn%27t-use-git-lfs/):
 
-> So adoption of Git LFS is a one way door that can't be easily reversed.
-
-or from the same article:
-
 > If you adopt LFS today, you are committing to a) running an LFS server forever b) incurring a history rewrite in the future in order to remove LFS from your repo, or c) ceasing to provide an LFS server and locking out people from using older Git commits.
+
+> So adoption of Git LFS is a one way door that can't be easily reversed.
 
 [`DVC`](https://github.com/iterative/dvc):
 
@@ -103,6 +102,7 @@ From the same documentation:
 This is the exact consumer model we want:
 - a shared local object store
 - reuse across many build directories and worktrees
+- reuse across many independent repositories too
 - normal local files materialized into build trees via symlinks or copies
 - no requirement for consumers to know which remote backend served the blob
 
@@ -121,6 +121,10 @@ The backend itself does not matter:
 - it can be an internal mirror or a static file server
 
 Multiple backends can coexist with ordered fallback. If we later replace `GitHub Release assets` with a different backend, consumers do not have to notice. They continue to resolve the same manifests into the same logical local files.
+
+Release publishing policy in this prototype is intentionally simple:
+- standalone assets are published as individual files
+- bundles are published as zip archives
 
 ## Target layout
 
