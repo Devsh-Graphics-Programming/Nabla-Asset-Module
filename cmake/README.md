@@ -53,6 +53,7 @@ cmake -P nam.cmake nam_fetch_and_materialize_channel DESTINATION_ROOT ./nabla_me
 cmake -P nam.cmake nam_fetch_channel CHANNEL media ITEMS Stanford_Bunny.stl
 cmake -P nam.cmake nam_materialize_channel CHANNEL media ITEMS Stanford_Bunny.stl DESTINATION_ROOT ./nabla_media
 cmake -P nam.cmake nam_fetch_and_materialize_channel CHANNEL media DESTINATION_ROOT ./nabla_media
+cmake -P nam.cmake nam_fetch_channel VERBOSE CHANNEL media ITEMS Stanford_Bunny.stl
 ```
 
 The first positional argument is always the CMake function name.
@@ -119,6 +120,13 @@ Incremental behavior is intentionally cheap:
 - fetched blobs get a sidecar digest file in the cache
 - if the cached blob already matches the current backend digest it is reused
   without re-downloading
+
+Logging behavior is intentionally split into two levels:
+
+- by default the module prints only a short start line and a final summary
+- with `VERBOSE` it also prints per-asset resolution, cache-hit and
+  materialization details
+- download progress is shown whenever an actual download happens
 
 ## Design constraints
 

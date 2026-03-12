@@ -10,7 +10,13 @@
 
 include_guard(GLOBAL)
 
-function(_nam_log MESSAGE_TEXT)
+function(_nam_log ENABLED MESSAGE_TEXT)
+    if (ENABLED)
+        message(STATUS "NablaAssetManifests: ${MESSAGE_TEXT}")
+    endif()
+endfunction()
+
+function(_nam_summary MESSAGE_TEXT)
     message(STATUS "NablaAssetManifests: ${MESSAGE_TEXT}")
 endfunction()
 
@@ -221,7 +227,7 @@ function(_nam_get_backend_kind OUT_VAR)
 endfunction()
 
 function(_nam_get_github_release_json OUT_JSON_VAR)
-    set(options)
+    set(options VERBOSE)
     set(oneValueArgs REPO TAG)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
@@ -235,7 +241,7 @@ function(_nam_get_github_release_json OUT_JSON_VAR)
     _nam_release_json_cache_key(_cache_key "${NAM_REPO}" "${NAM_TAG}")
     get_property(_cached_json GLOBAL PROPERTY "${_cache_key}")
     if (_cached_json)
-        _nam_log("reusing cached release metadata for `${NAM_REPO}` tag `${NAM_TAG}`")
+        _nam_log("${NAM_VERBOSE}" "reusing cached release metadata for `${NAM_REPO}` tag `${NAM_TAG}`")
         set(${OUT_JSON_VAR} "${_cached_json}" PARENT_SCOPE)
         return()
     endif()
@@ -245,7 +251,7 @@ function(_nam_get_github_release_json OUT_JSON_VAR)
     file(MAKE_DIRECTORY "${_meta_dir}")
     set(_json_file "${_meta_dir}/${NAM_TAG}.json")
     set(_api_url "https://api.github.com/repos/${NAM_REPO}/releases/tags/${NAM_TAG}")
-    _nam_log("querying release metadata for `${NAM_REPO}` tag `${NAM_TAG}`")
+    _nam_log("${NAM_VERBOSE}" "querying release metadata for `${NAM_REPO}` tag `${NAM_TAG}`")
     file(DOWNLOAD "${_api_url}" "${_json_file}" STATUS _status)
     list(GET _status 0 _status_code)
     if (NOT _status_code EQUAL 0)
@@ -260,7 +266,7 @@ function(_nam_get_github_release_json OUT_JSON_VAR)
 endfunction()
 
 function(_nam_find_github_release_asset OUT_DIGEST_VAR OUT_URL_VAR)
-    set(options)
+    set(options VERBOSE)
     set(oneValueArgs REPO TAG RELEASE_ASSET)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
@@ -271,7 +277,12 @@ function(_nam_find_github_release_asset OUT_DIGEST_VAR OUT_URL_VAR)
         set(NAM_TAG "media")
     endif()
 
-    _nam_get_github_release_json(_json REPO "${NAM_REPO}" TAG "${NAM_TAG}")
+    set(_verbose_args)
+    if (NAM_VERBOSE)
+        list(APPEND _verbose_args VERBOSE)
+    endif()
+
+    _nam_get_github_release_json(_json REPO "${NAM_REPO}" TAG "${NAM_TAG}" ${_verbose_args})
     string(JSON _asset_count LENGTH "${_json}" assets)
     if (_asset_count STREQUAL "")
         message(FATAL_ERROR "NablaAssetManifests: release `${NAM_TAG}` has no assets")
@@ -292,18 +303,23 @@ function(_nam_find_github_release_asset OUT_DIGEST_VAR OUT_URL_VAR)
 endfunction()
 
 function(_nam_resolve_remote_asset OUT_DIGEST_VAR OUT_URL_VAR)
-    set(options)
+    set(options VERBOSE)
     set(oneValueArgs REPO TAG RELEASE_ASSET)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     _nam_get_backend_kind(_backend_kind)
     if (_backend_kind STREQUAL "github_release")
+        set(_verbose_args)
+        if (NAM_VERBOSE)
+            list(APPEND _verbose_args VERBOSE)
+        endif()
         _nam_find_github_release_asset(
             _resolved_digest
             _resolved_url
             REPO "${NAM_REPO}"
             TAG "${NAM_TAG}"
             RELEASE_ASSET "${NAM_RELEASE_ASSET}"
+            ${_verbose_args}
         )
         set(${OUT_DIGEST_VAR} "${_resolved_digest}" PARENT_SCOPE)
         set(${OUT_URL_VAR} "${_resolved_url}" PARENT_SCOPE)
@@ -314,8 +330,8 @@ function(_nam_resolve_remote_asset OUT_DIGEST_VAR OUT_URL_VAR)
 endfunction()
 
 function(nam_fetch_asset)
-    set(options)
-    set(oneValueArgs CHANNEL REPO TAG ASSET CACHE_ROOT OUT_FILE)
+    set(options VERBOSE)
+    set(oneValueArgs CHANNEL REPO TAG ASSET CACHE_ROOT OUT_FILE OUT_STATUS)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     if (NOT DEFINED NAM_REPO OR "${NAM_REPO}" STREQUAL "")
@@ -340,12 +356,18 @@ function(nam_fetch_asset)
         OUT_KEY _key
     )
 
+    set(_verbose_args)
+    if (NAM_VERBOSE)
+        list(APPEND _verbose_args VERBOSE)
+    endif()
+
     _nam_resolve_remote_asset(
         _sha256
         _url
         REPO "${NAM_REPO}"
         TAG "${NAM_TAG}"
         RELEASE_ASSET "${_release_asset}"
+        ${_verbose_args}
     )
     string(TOLOWER "${_sha256}" _sha256)
 
@@ -355,9 +377,10 @@ function(nam_fetch_asset)
     get_filename_component(_cache_dir "${_cache_file}" DIRECTORY)
     file(MAKE_DIRECTORY "${_cache_dir}")
 
-    _nam_log("fetch `${NAM_ASSET}` as `${_release_asset}` into cache root `${_cache_root}`")
+    _nam_log("${NAM_VERBOSE}" "fetch `${NAM_ASSET}` as `${_release_asset}` into cache root `${_cache_root}`")
 
     set(_need_download TRUE)
+    set(_fetch_status "downloaded")
     if (EXISTS "${_cache_file}")
         if (EXISTS "${_digest_file}")
             file(READ "${_digest_file}" _cached_sha256)
@@ -368,20 +391,22 @@ function(nam_fetch_asset)
         endif()
 
         if (_cached_sha256 STREQUAL "${_sha256}")
-            _nam_log("cache hit for `${NAM_ASSET}`")
+            _nam_log("${NAM_VERBOSE}" "cache hit for `${NAM_ASSET}`")
             set(_need_download FALSE)
+            set(_fetch_status "cache_hit")
         else()
             if (NOT _cached_sha256 STREQUAL "")
-                _nam_log("cache sidecar digest mismatch for `${NAM_ASSET}`")
+                _nam_log("${NAM_VERBOSE}" "cache sidecar digest mismatch for `${NAM_ASSET}`")
             endif()
             file(SHA256 "${_cache_file}" _existing_sha256)
             string(TOLOWER "${_existing_sha256}" _existing_sha256)
             if (_existing_sha256 STREQUAL "${_sha256}")
                 file(WRITE "${_digest_file}" "${_sha256}\n")
-                _nam_log("cache hit after hash verification for `${NAM_ASSET}`")
+                _nam_log("${NAM_VERBOSE}" "cache hit after hash verification for `${NAM_ASSET}`")
                 set(_need_download FALSE)
+                set(_fetch_status "cache_hit")
             else()
-                _nam_log("cache miss for `${NAM_ASSET}` because digest changed")
+                _nam_log("${NAM_VERBOSE}" "cache miss for `${NAM_ASSET}` because digest changed")
                 file(REMOVE "${_cache_file}")
                 if (EXISTS "${_digest_file}")
                     file(REMOVE "${_digest_file}")
@@ -391,7 +416,7 @@ function(nam_fetch_asset)
     endif()
 
     if (_need_download)
-        _nam_log("downloading `${_release_asset}` from backend `${NAM_TAG}`")
+        _nam_log("${NAM_VERBOSE}" "downloading `${_release_asset}` from backend `${NAM_TAG}`")
         file(DOWNLOAD
             "${_url}"
             "${_cache_file}"
@@ -404,17 +429,20 @@ function(nam_fetch_asset)
             message(FATAL_ERROR "NablaAssetManifests: failed to fetch `${NAM_ASSET}` from channel `${NAM_CHANNEL}`")
         endif()
         file(WRITE "${_digest_file}" "${_sha256}\n")
-        _nam_log("stored `${NAM_ASSET}` in `${_cache_file}`")
+        _nam_log("${NAM_VERBOSE}" "stored `${NAM_ASSET}` in `${_cache_file}`")
     endif()
 
     if (DEFINED NAM_OUT_FILE AND NOT "${NAM_OUT_FILE}" STREQUAL "")
         set(${NAM_OUT_FILE} "${_cache_file}" PARENT_SCOPE)
     endif()
+    if (DEFINED NAM_OUT_STATUS AND NOT "${NAM_OUT_STATUS}" STREQUAL "")
+        set(${NAM_OUT_STATUS} "${_fetch_status}" PARENT_SCOPE)
+    endif()
 endfunction()
 
 function(nam_materialize_asset)
-    set(options)
-    set(oneValueArgs CHANNEL REPO TAG ASSET CACHE_ROOT DESTINATION_ROOT MODE OUT_PATH)
+    set(options VERBOSE)
+    set(oneValueArgs CHANNEL REPO TAG ASSET CACHE_ROOT DESTINATION_ROOT MODE OUT_PATH OUT_STATUS)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     if (NOT DEFINED NAM_REPO OR "${NAM_REPO}" STREQUAL "")
@@ -442,6 +470,11 @@ function(nam_materialize_asset)
         OUT_KEY _key
     )
 
+    set(_verbose_args)
+    if (NAM_VERBOSE)
+        list(APPEND _verbose_args VERBOSE)
+    endif()
+
     nam_fetch_asset(
         CHANNEL "${NAM_CHANNEL}"
         REPO "${NAM_REPO}"
@@ -449,10 +482,11 @@ function(nam_materialize_asset)
         ASSET "${NAM_ASSET}"
         CACHE_ROOT "${NAM_CACHE_ROOT}"
         OUT_FILE _cache_file
+        ${_verbose_args}
     )
 
     set(_target_path "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}/${_relative_path}")
-    _nam_log("materialize `${NAM_ASSET}` to `${_target_path}`")
+    _nam_log("${NAM_VERBOSE}" "materialize `${NAM_ASSET}` to `${_target_path}`")
     if (_kind STREQUAL "file")
         get_filename_component(_target_dir "${_target_path}" DIRECTORY)
         file(MAKE_DIRECTORY "${_target_dir}")
@@ -464,12 +498,14 @@ function(nam_materialize_asset)
         else()
             file(CREATE_LINK "${_cache_file}" "${_target_path}" SYMBOLIC COPY_ON_ERROR)
         endif()
+        set(_materialize_status "file")
     elseif(_kind STREQUAL "archive")
         if (EXISTS "${_target_path}")
             file(REMOVE_RECURSE "${_target_path}")
         endif()
         file(MAKE_DIRECTORY "${_target_path}")
         file(ARCHIVE_EXTRACT INPUT "${_cache_file}" DESTINATION "${_target_path}")
+        set(_materialize_status "archive")
     else()
         message(FATAL_ERROR "NablaAssetManifests: unsupported asset kind `${_kind}`")
     endif()
@@ -477,10 +513,13 @@ function(nam_materialize_asset)
     if (DEFINED NAM_OUT_PATH AND NOT "${NAM_OUT_PATH}" STREQUAL "")
         set(${NAM_OUT_PATH} "${_target_path}" PARENT_SCOPE)
     endif()
+    if (DEFINED NAM_OUT_STATUS AND NOT "${NAM_OUT_STATUS}" STREQUAL "")
+        set(${NAM_OUT_STATUS} "${_materialize_status}" PARENT_SCOPE)
+    endif()
 endfunction()
 
 function(nam_fetch_channel)
-    set(options)
+    set(options VERBOSE)
     set(oneValueArgs CHANNEL REPO TAG CACHE_ROOT)
     set(multiValueArgs ITEMS)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -501,7 +540,17 @@ function(nam_fetch_channel)
     endif()
 
     list(LENGTH _items _item_count)
-    _nam_log("fetch channel `${NAM_CHANNEL}` from repo `${NAM_REPO}` tag `${NAM_TAG}` with ${_item_count} item(s)")
+    _nam_log("${NAM_VERBOSE}" "fetch channel `${NAM_CHANNEL}` from repo `${NAM_REPO}` tag `${NAM_TAG}` with ${_item_count} item(s)")
+    _nam_get_backend_kind(_backend_kind)
+    _nam_resolve_cache_root(_resolved_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
+    _nam_summary("fetch start for channel `${NAM_CHANNEL}`: repo=`${NAM_REPO}`, tag=`${NAM_TAG}`, backend=`${_backend_kind}`, cache_root=`${_resolved_cache_root}`")
+
+    set(_cache_hits 0)
+    set(_downloads 0)
+    set(_verbose_args)
+    if (NAM_VERBOSE)
+        list(APPEND _verbose_args VERBOSE)
+    endif()
 
     foreach(_asset IN LISTS _items)
         nam_fetch_asset(
@@ -510,12 +559,21 @@ function(nam_fetch_channel)
             TAG "${NAM_TAG}"
             ASSET "${_asset}"
             CACHE_ROOT "${NAM_CACHE_ROOT}"
+            OUT_STATUS _fetch_status
+            ${_verbose_args}
         )
+        if (_fetch_status STREQUAL "cache_hit")
+            math(EXPR _cache_hits "${_cache_hits}+1")
+        elseif(_fetch_status STREQUAL "downloaded")
+            math(EXPR _downloads "${_downloads}+1")
+        endif()
     endforeach()
+
+    _nam_summary("fetch summary for channel `${NAM_CHANNEL}`: total=${_item_count}, cache_hit=${_cache_hits}, download=${_downloads}")
 endfunction()
 
 function(nam_materialize_channel)
-    set(options)
+    set(options VERBOSE)
     set(oneValueArgs CHANNEL REPO TAG CACHE_ROOT DESTINATION_ROOT MODE)
     set(multiValueArgs ITEMS)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -539,7 +597,15 @@ function(nam_materialize_channel)
     endif()
 
     list(LENGTH _items _item_count)
-    _nam_log("materialize channel `${NAM_CHANNEL}` into `${NAM_DESTINATION_ROOT}` with ${_item_count} item(s)")
+    _nam_log("${NAM_VERBOSE}" "materialize channel `${NAM_CHANNEL}` into `${NAM_DESTINATION_ROOT}` with ${_item_count} item(s)")
+    _nam_summary("materialize start for channel `${NAM_CHANNEL}`: destination=`${NAM_DESTINATION_ROOT}`, mode=`${NAM_MODE}`")
+
+    set(_file_count 0)
+    set(_archive_count 0)
+    set(_verbose_args)
+    if (NAM_VERBOSE)
+        list(APPEND _verbose_args VERBOSE)
+    endif()
 
     foreach(_asset IN LISTS _items)
         nam_materialize_asset(
@@ -550,12 +616,21 @@ function(nam_materialize_channel)
             CACHE_ROOT "${NAM_CACHE_ROOT}"
             DESTINATION_ROOT "${NAM_DESTINATION_ROOT}"
             MODE "${NAM_MODE}"
+            OUT_STATUS _materialize_status
+            ${_verbose_args}
         )
+        if (_materialize_status STREQUAL "file")
+            math(EXPR _file_count "${_file_count}+1")
+        elseif(_materialize_status STREQUAL "archive")
+            math(EXPR _archive_count "${_archive_count}+1")
+        endif()
     endforeach()
+
+    _nam_summary("materialize summary for channel `${NAM_CHANNEL}`: total=${_item_count}, file=${_file_count}, archive=${_archive_count}, destination=`${NAM_DESTINATION_ROOT}`")
 endfunction()
 
 function(nam_fetch_and_materialize_channel)
-    set(options)
+    set(options VERBOSE)
     set(oneValueArgs CHANNEL REPO TAG CACHE_ROOT DESTINATION_ROOT MODE)
     set(multiValueArgs ITEMS)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -569,6 +644,10 @@ function(nam_fetch_and_materialize_channel)
     if (NOT DEFINED NAM_TAG OR "${NAM_TAG}" STREQUAL "")
         set(NAM_TAG "media")
     endif()
+    set(_verbose_args)
+    if (NAM_VERBOSE)
+        list(APPEND _verbose_args VERBOSE)
+    endif()
 
     nam_fetch_channel(
         CHANNEL "${NAM_CHANNEL}"
@@ -576,6 +655,7 @@ function(nam_fetch_and_materialize_channel)
         TAG "${NAM_TAG}"
         CACHE_ROOT "${NAM_CACHE_ROOT}"
         ITEMS ${NAM_ITEMS}
+        ${_verbose_args}
     )
 
     nam_materialize_channel(
@@ -586,5 +666,6 @@ function(nam_fetch_and_materialize_channel)
         DESTINATION_ROOT "${NAM_DESTINATION_ROOT}"
         MODE "${NAM_MODE}"
         ITEMS ${NAM_ITEMS}
+        ${_verbose_args}
     )
 endfunction()
