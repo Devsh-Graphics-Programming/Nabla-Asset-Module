@@ -32,10 +32,10 @@ jobs:
       SMOKE_BUILD_DIR: ${{ github.workspace }}/smoke/build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Restore NAM cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.NAM_CACHE_ROOT }}
           key: nam-cache-${{ runner.os }}-${{ hashFiles('media/**/*.dvc') }}
