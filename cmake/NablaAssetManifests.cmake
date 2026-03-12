@@ -27,10 +27,26 @@ function(_nam_validate_file_link_mode MODE_VALUE OUT_VAR)
 endfunction()
 
 function(_nam_detect_file_link_mode OUT_VAR)
-    set(_probe_root "${CMAKE_CURRENT_BINARY_DIR}/.nam_probe")
-    file(MAKE_DIRECTORY "${_probe_root}")
-    set(_src "${_probe_root}/src.txt")
-    set(_dst "${_probe_root}/dst.txt")
+    set(options)
+    set(oneValueArgs SOURCE_ROOT DESTINATION_ROOT)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if (DEFINED NAM_SOURCE_ROOT AND NOT "${NAM_SOURCE_ROOT}" STREQUAL "")
+        set(_source_root "${NAM_SOURCE_ROOT}")
+    else()
+        set(_source_root "${CMAKE_CURRENT_BINARY_DIR}")
+    endif()
+
+    if (DEFINED NAM_DESTINATION_ROOT AND NOT "${NAM_DESTINATION_ROOT}" STREQUAL "")
+        set(_destination_root "${NAM_DESTINATION_ROOT}")
+    else()
+        set(_destination_root "${CMAKE_CURRENT_BINARY_DIR}")
+    endif()
+
+    file(MAKE_DIRECTORY "${_source_root}" "${_destination_root}")
+    string(RANDOM LENGTH 12 ALPHABET "0123456789abcdef" _probe_id)
+    set(_src "${_source_root}/.nam_probe_${_probe_id}_src.txt")
+    set(_dst "${_destination_root}/.nam_probe_${_probe_id}_dst.txt")
     file(WRITE "${_src}" "probe\n")
     file(REMOVE "${_dst}")
 
@@ -67,13 +83,21 @@ function(_nam_detect_file_link_mode OUT_VAR)
 endfunction()
 
 function(_nam_resolve_file_link_mode OUT_VAR)
+    set(options)
+    set(oneValueArgs SOURCE_ROOT DESTINATION_ROOT)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
     if (DEFINED NAM_INTERNAL_FORCE_FILE_LINK_MODE AND NOT "${NAM_INTERNAL_FORCE_FILE_LINK_MODE}" STREQUAL "")
         _nam_validate_file_link_mode("${NAM_INTERNAL_FORCE_FILE_LINK_MODE}" _forced_mode)
         set(${OUT_VAR} "${_forced_mode}" PARENT_SCOPE)
         return()
     endif()
 
-    _nam_detect_file_link_mode(_detected_mode)
+    _nam_detect_file_link_mode(
+        _detected_mode
+        SOURCE_ROOT "${NAM_SOURCE_ROOT}"
+        DESTINATION_ROOT "${NAM_DESTINATION_ROOT}"
+    )
     set(${OUT_VAR} "${_detected_mode}" PARENT_SCOPE)
 endfunction()
 
@@ -428,7 +452,13 @@ function(nam_add_channel_target)
     set(ExternalData_URL_TEMPLATES "ExternalDataCustomScript://NAM/%(hash)")
     set(ExternalData_CUSTOM_SCRIPT_NAM "${_fetch_script}")
     add_custom_target("${NAM_TARGET}")
-    _nam_resolve_file_link_mode(_file_link_mode)
+    set(_refs_root "${_build_root}/refs")
+    set(_externaldata_binary_root "${_build_root}/assets")
+    _nam_resolve_file_link_mode(
+        _file_link_mode
+        SOURCE_ROOT "${_externaldata_binary_root}"
+        DESTINATION_ROOT "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}"
+    )
     if (NAM_NO_SYMLINKS)
         set(_file_link_mode "copy")
     endif()
@@ -454,17 +484,18 @@ function(nam_add_channel_target)
         )
 
         set(_data_name "${NAM_CHANNEL}/${_relative_path}")
-        get_filename_component(_link_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_data_name}" DIRECTORY)
+        set(_data_ref "${_refs_root}/${_data_name}")
+        get_filename_component(_link_dir "${_data_ref}" DIRECTORY)
         file(MAKE_DIRECTORY "${_link_dir}")
-        file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/${_data_name}.sha256" "${_sha256}\n")
-        list(APPEND _asset_refs "DATA{${_data_name}}")
+        file(WRITE "${_data_ref}.sha256" "${_sha256}\n")
+        list(APPEND _asset_refs "DATA{${_data_ref}}")
         list(APPEND _asset_relpaths "${_relative_path}")
     endforeach()
 
     if (_asset_refs)
         set(_asset_target "${NAM_TARGET}__externaldata")
-        set(ExternalData_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
-        set(ExternalData_BINARY_ROOT "${_build_root}/assets")
+        set(ExternalData_SOURCE_ROOT "${_refs_root}")
+        set(ExternalData_BINARY_ROOT "${_externaldata_binary_root}")
         unset(ExternalData_NO_SYMLINKS)
         set(_old_suppress_dev "${CMAKE_SUPPRESS_DEVELOPER_WARNINGS}")
         set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1)

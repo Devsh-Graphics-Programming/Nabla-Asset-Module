@@ -108,7 +108,7 @@ The resulting model is:
 
 - one shared local object store per user
 - content-addressed objects under `.../objects/SHA256/<hash>`
-- generated `.sha256` references under `<channel>/...` in the consumer source tree
+- generated `.sha256` references under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/refs/<channel>/...`
 - intermediate `ExternalData` build outputs under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/assets`
 - normal build targets for consumers
 
