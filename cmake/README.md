@@ -29,8 +29,9 @@ Building target `media` then:
 
 - fetches all assets from the default `media` channel
 - reuses the shared local object store
-- materializes standalone files and bundle directories under
+- materializes release assets as files under
   `${CMAKE_CURRENT_BINARY_DIR}/media`
+- keeps `zip` payloads as `zip` files
 
 ### Explicit usage
 
@@ -74,7 +75,6 @@ For input assets the source of truth is:
 The module reads those `.dvc` files and derives:
 
 - the logical relative path inside the channel
-- whether a payload is a standalone file or a bundle directory
 - the expected release asset name
 - the content hash used by the shared `ExternalData` object store
 
@@ -83,6 +83,12 @@ Current publishing convention:
 - standalone payloads are published as individual files
 - bundle directories are published as `zip` archives with the directory basename
 - the current backend is `github_release`
+
+Consumer-side rule:
+
+- every published release asset is treated as a file
+- nothing is unpacked automatically
+- if a consumer wants to open a `zip`, it does so at runtime
 
 ## ExternalData model
 
@@ -101,7 +107,6 @@ The resulting model is:
 - content-addressed objects under `.../objects/SHA256/<hash>`
 - generated content links under `nam-data/<target>/` in the consumer source tree
 - normal build targets for consumers
-- archive extraction as an explicit build step for bundle payloads
 
 During configure the module probes the current host once and selects the
 lightest supported file materialization mode. On the current Windows host this
@@ -110,11 +115,8 @@ resolves to `hardlink`.
 At build time:
 
 - `ExternalData` populates the shared object store
-- standalone files are materialized to the destination root using the detected
-  lightweight file mode when available
-- bundle archives are extracted once into a shared extracted cache and then
-  materialized to the destination root using the same lightweight file mode for
-  the extracted files
+- every release asset is materialized to the destination root exactly as it was
+  published, using the detected lightweight file mode when available
 
 Passing `NO_SYMLINKS` forces copy materialization even when the host supports
 lightweight links.

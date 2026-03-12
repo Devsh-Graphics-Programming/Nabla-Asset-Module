@@ -118,7 +118,7 @@ endfunction()
 
 function(_nam_parse_dvc_file)
     set(options)
-    set(oneValueArgs DVC_FILE CHANNEL OUT_KIND OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
+    set(oneValueArgs DVC_FILE CHANNEL OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     if (NOT NAM_DVC_FILE)
@@ -148,15 +148,13 @@ function(_nam_parse_dvc_file)
     file(TO_CMAKE_PATH "${_relative_path}" _relative_path)
 
     if (_md5 MATCHES "\\.dir$")
-        set(_kind "archive")
         get_filename_component(_name "${_tracked_abs}" NAME)
         set(_release_asset "${_name}.zip")
+        set(_relative_path "${_relative_path}.zip")
     else()
-        set(_kind "file")
         get_filename_component(_release_asset "${_tracked_abs}" NAME)
     endif()
 
-    set(${NAM_OUT_KIND} "${_kind}" PARENT_SCOPE)
     set(${NAM_OUT_RELATIVE_PATH} "${_relative_path}" PARENT_SCOPE)
     set(${NAM_OUT_RELEASE_ASSET} "${_release_asset}" PARENT_SCOPE)
     set(${NAM_OUT_KEY} "${_relative_path}" PARENT_SCOPE)
@@ -180,7 +178,6 @@ function(nam_get_channel_asset_keys OUT_VAR)
         _nam_parse_dvc_file(
             DVC_FILE "${_dvc}"
             CHANNEL "${NAM_CHANNEL}"
-            OUT_KIND _kind
             OUT_RELATIVE_PATH _relative_path
             OUT_RELEASE_ASSET _release_asset
             OUT_KEY _key
@@ -192,7 +189,7 @@ endfunction()
 
 function(_nam_find_channel_asset)
     set(options)
-    set(oneValueArgs CHANNEL ASSET OUT_KIND OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
+    set(oneValueArgs CHANNEL ASSET OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     if (NOT DEFINED NAM_CHANNEL OR "${NAM_CHANNEL}" STREQUAL "")
@@ -211,14 +208,12 @@ function(_nam_find_channel_asset)
         _nam_parse_dvc_file(
             DVC_FILE "${_dvc}"
             CHANNEL "${NAM_CHANNEL}"
-            OUT_KIND _kind
             OUT_RELATIVE_PATH _relative_path
             OUT_RELEASE_ASSET _release_asset
             OUT_KEY _key
         )
         if (_key STREQUAL "${NAM_ASSET}" OR _release_asset STREQUAL "${NAM_ASSET}")
             math(EXPR _match_count "${_match_count}+1")
-            set(_resolved_kind "${_kind}")
             set(_resolved_relative_path "${_relative_path}")
             set(_resolved_release_asset "${_release_asset}")
             set(_resolved_key "${_key}")
@@ -232,7 +227,6 @@ function(_nam_find_channel_asset)
         message(FATAL_ERROR "NablaAssetManifests: ambiguous asset selector `${NAM_ASSET}` in channel `${NAM_CHANNEL}`")
     endif()
 
-    set(${NAM_OUT_KIND} "${_resolved_kind}" PARENT_SCOPE)
     set(${NAM_OUT_RELATIVE_PATH} "${_resolved_relative_path}" PARENT_SCOPE)
     set(${NAM_OUT_RELEASE_ASSET} "${_resolved_release_asset}" PARENT_SCOPE)
     set(${NAM_OUT_KEY} "${_resolved_key}" PARENT_SCOPE)
@@ -417,16 +411,12 @@ function(nam_add_channel_target)
     endif()
     _nam_summary("materialization mode for file assets: `${_file_link_mode}`")
 
-    set(_file_refs)
-    set(_file_relpaths)
-    set(_archive_refs)
-    set(_archive_relpaths)
-    set(_archive_hashes)
+    set(_asset_refs)
+    set(_asset_relpaths)
     foreach(_asset IN LISTS _items)
         _nam_find_channel_asset(
             CHANNEL "${NAM_CHANNEL}"
             ASSET "${_asset}"
-            OUT_KIND _kind
             OUT_RELATIVE_PATH _relative_path
             OUT_RELEASE_ASSET _release_asset
             OUT_KEY _key
@@ -440,37 +430,25 @@ function(nam_add_channel_target)
             CACHE_ROOT "${NAM_CACHE_ROOT}"
         )
 
-        if (_kind STREQUAL "file")
-            set(_data_name "${NAM_CHANNEL}/${_relative_path}")
-            get_filename_component(_link_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_data_name}" DIRECTORY)
-            file(MAKE_DIRECTORY "${_link_dir}")
-            file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/${_data_name}.sha256" "${_sha256}\n")
-            list(APPEND _file_refs "DATA{${_data_name}}")
-            list(APPEND _file_relpaths "${_relative_path}")
-        elseif(_kind STREQUAL "archive")
-            set(_data_name "${NAM_CHANNEL}/nam_archives/${_relative_path}.zip")
-            get_filename_component(_link_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_data_name}" DIRECTORY)
-            file(MAKE_DIRECTORY "${_link_dir}")
-            file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/${_data_name}.sha256" "${_sha256}\n")
-            list(APPEND _archive_refs "DATA{${_data_name}}")
-            list(APPEND _archive_relpaths "${_relative_path}")
-            list(APPEND _archive_hashes "${_sha256}")
-        else()
-            message(FATAL_ERROR "NablaAssetManifests: unsupported asset kind `${_kind}`")
-        endif()
+        set(_data_name "${NAM_CHANNEL}/${_relative_path}")
+        get_filename_component(_link_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_data_name}" DIRECTORY)
+        file(MAKE_DIRECTORY "${_link_dir}")
+        file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/${_data_name}.sha256" "${_sha256}\n")
+        list(APPEND _asset_refs "DATA{${_data_name}}")
+        list(APPEND _asset_relpaths "${_relative_path}")
     endforeach()
 
-    if (_file_refs)
-        set(_file_target "${NAM_TARGET}__externaldata_files")
+    if (_asset_refs)
+        set(_asset_target "${NAM_TARGET}__externaldata")
         set(ExternalData_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
-        set(ExternalData_BINARY_ROOT "${_build_root}/files")
+        set(ExternalData_BINARY_ROOT "${_build_root}/assets")
         unset(ExternalData_NO_SYMLINKS)
         set(_old_suppress_dev "${CMAKE_SUPPRESS_DEVELOPER_WARNINGS}")
         set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1)
-        ExternalData_Expand_Arguments("${_file_target}" _file_expanded ${_file_refs})
+        ExternalData_Expand_Arguments("${_asset_target}" _asset_expanded ${_asset_refs})
         set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS "${_old_suppress_dev}")
-        ExternalData_Add_Target("${_file_target}" SHOW_PROGRESS "${NAM_SHOW_PROGRESS}")
-        set(_externaldata_config "${CMAKE_CURRENT_BINARY_DIR}/${_file_target}_config.cmake")
+        ExternalData_Add_Target("${_asset_target}" SHOW_PROGRESS "${NAM_SHOW_PROGRESS}")
+        set(_externaldata_config "${CMAKE_CURRENT_BINARY_DIR}/${_asset_target}_config.cmake")
         if (EXISTS "${_externaldata_config}")
             if (NAM_VERBOSE)
                 set(_externaldata_log_level "STATUS")
@@ -480,73 +458,26 @@ function(nam_add_channel_target)
             file(READ "${_externaldata_config}" _externaldata_config_contents)
             file(WRITE "${_externaldata_config}" "set(CMAKE_MESSAGE_LOG_LEVEL ${_externaldata_log_level})\n${_externaldata_config_contents}")
         endif()
-        add_dependencies("${NAM_TARGET}" "${_file_target}")
+        add_dependencies("${NAM_TARGET}" "${_asset_target}")
 
-        list(LENGTH _file_expanded _file_expanded_count)
-        math(EXPR _file_last "${_file_expanded_count} - 1")
-        foreach(_index RANGE ${_file_last})
-            list(GET _file_expanded ${_index} _expanded_path)
-            list(GET _file_relpaths ${_index} _relative_path)
+        list(LENGTH _asset_expanded _asset_expanded_count)
+        math(EXPR _asset_last "${_asset_expanded_count} - 1")
+        foreach(_index RANGE ${_asset_last})
+            list(GET _asset_expanded ${_index} _expanded_path)
+            list(GET _asset_relpaths ${_index} _relative_path)
             set(_target_path "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}/${_relative_path}")
             set(_stamp "${_build_root}/file_stamps/${_index}.stamp")
             get_filename_component(_stamp_dir "${_stamp}" DIRECTORY)
             file(MAKE_DIRECTORY "${_stamp_dir}")
             add_custom_command(
                 OUTPUT "${_stamp}"
-                COMMAND "${CMAKE_COMMAND}" -DTYPE=file -DINPUT=${_expanded_path} -DDESTINATION=${_target_path} -DLINK_MODE=${_file_link_mode} -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NablaAssetManifestsMaterialize.cmake"
+                COMMAND "${CMAKE_COMMAND}" -DINPUT=${_expanded_path} -DDESTINATION=${_target_path} -DLINK_MODE=${_file_link_mode} -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NablaAssetManifestsMaterialize.cmake"
                 COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
                 DEPENDS "${_expanded_path}"
                 VERBATIM
             )
             list(APPEND _materialize_stamps "${_stamp}")
         endforeach()
-    endif()
-
-    list(LENGTH _archive_refs _archive_count)
-    if (_archive_refs)
-        set(_archive_target "${NAM_TARGET}__externaldata_archives")
-        set(ExternalData_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
-        set(ExternalData_BINARY_ROOT "${_build_root}/archives")
-        unset(ExternalData_NO_SYMLINKS)
-        set(_old_suppress_dev "${CMAKE_SUPPRESS_DEVELOPER_WARNINGS}")
-        set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1)
-        ExternalData_Expand_Arguments("${_archive_target}" _archive_expanded ${_archive_refs})
-        set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS "${_old_suppress_dev}")
-        ExternalData_Add_Target("${_archive_target}" SHOW_PROGRESS "${NAM_SHOW_PROGRESS}")
-        set(_externaldata_config "${CMAKE_CURRENT_BINARY_DIR}/${_archive_target}_config.cmake")
-        if (EXISTS "${_externaldata_config}")
-            if (NAM_VERBOSE)
-                set(_externaldata_log_level "STATUS")
-            else()
-                set(_externaldata_log_level "NOTICE")
-            endif()
-            file(READ "${_externaldata_config}" _externaldata_config_contents)
-            file(WRITE "${_externaldata_config}" "set(CMAKE_MESSAGE_LOG_LEVEL ${_externaldata_log_level})\n${_externaldata_config_contents}")
-        endif()
-
-        add_dependencies("${NAM_TARGET}" "${_archive_target}")
-
-        list(LENGTH _archive_expanded _archive_expanded_count)
-        math(EXPR _archive_last "${_archive_expanded_count} - 1")
-        foreach(_index RANGE ${_archive_last})
-            list(GET _archive_relpaths ${_index} _relative_path)
-            list(GET _archive_hashes ${_index} _archive_hash)
-            list(GET _archive_expanded ${_index} _expanded_path)
-            set(_target_path "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}/${_relative_path}")
-            set(_stamp "${_build_root}/stamps/${_index}.stamp")
-            get_filename_component(_stamp_dir "${_stamp}" DIRECTORY)
-            file(MAKE_DIRECTORY "${_stamp_dir}")
-            add_custom_command(
-                OUTPUT "${_stamp}"
-                COMMAND "${CMAKE_COMMAND}" -DTYPE=archive -DINPUT=${_expanded_path} -DDESTINATION=${_target_path} -DEXTRACT_ROOT=${_cache_root}/extracted/SHA256 -DHASH=${_archive_hash} -DLINK_MODE=${_file_link_mode} -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NablaAssetManifestsMaterialize.cmake"
-                COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
-                DEPENDS "${_expanded_path}"
-                VERBATIM
-            )
-            list(APPEND _materialize_stamps "${_stamp}")
-        endforeach()
-
-        add_dependencies("${NAM_TARGET}" "${_archive_target}")
     endif()
 
     if (_materialize_stamps)
@@ -554,6 +485,5 @@ function(nam_add_channel_target)
         add_dependencies("${NAM_TARGET}" "${NAM_TARGET}__materialize")
     endif()
 
-    math(EXPR _file_count "${_item_count} - ${_archive_count}")
-    _nam_summary("channel target `${NAM_TARGET}` ready: total=${_item_count}, file=${_file_count}, archive=${_archive_count}, destination=`${NAM_DESTINATION_ROOT}`")
+    _nam_summary("channel target `${NAM_TARGET}` ready: total=${_item_count}, destination=`${NAM_DESTINATION_ROOT}`")
 endfunction()
