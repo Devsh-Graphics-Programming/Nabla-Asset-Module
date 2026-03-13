@@ -1,4 +1,4 @@
-# Consumer module for the Nabla-Asset-Manifests repository.
+# Consumer module with Nabla-Asset-Manifests defaults.
 #
 # Maintainer-side source of truth:
 # - physical layout under channel roots such as `media/`
@@ -167,17 +167,30 @@ function(_nam_resolve_cache_root OUT_VAR)
     set(${OUT_VAR} "${_root}" PARENT_SCOPE)
 endfunction()
 
+function(_nam_resolve_manifest_root OUT_VAR)
+    set(options)
+    set(oneValueArgs MANIFEST_ROOT)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if (DEFINED NAM_MANIFEST_ROOT AND NOT "${NAM_MANIFEST_ROOT}" STREQUAL "")
+        file(TO_CMAKE_PATH "${NAM_MANIFEST_ROOT}" _root)
+    else()
+        nam_get_repo_root(_root)
+    endif()
+    set(${OUT_VAR} "${_root}" PARENT_SCOPE)
+endfunction()
+
 function(_nam_get_channel_root OUT_VAR)
     set(options)
-    set(oneValueArgs CHANNEL)
+    set(oneValueArgs CHANNEL MANIFEST_ROOT)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     if (NOT DEFINED NAM_CHANNEL OR "${NAM_CHANNEL}" STREQUAL "")
         set(NAM_CHANNEL "media")
     endif()
 
-    nam_get_repo_root(_repo_root)
-    set(_channel_root "${_repo_root}/${NAM_CHANNEL}")
+    _nam_resolve_manifest_root(_manifest_root MANIFEST_ROOT "${NAM_MANIFEST_ROOT}")
+    set(_channel_root "${_manifest_root}/${NAM_CHANNEL}")
     if (NOT EXISTS "${_channel_root}")
         message(FATAL_ERROR "NablaAssetManifests: channel root `${_channel_root}` does not exist")
     endif()
@@ -186,14 +199,14 @@ endfunction()
 
 function(_nam_parse_dvc_file)
     set(options)
-    set(oneValueArgs DVC_FILE CHANNEL OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
+    set(oneValueArgs DVC_FILE CHANNEL MANIFEST_ROOT OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     if (NOT NAM_DVC_FILE)
         message(FATAL_ERROR "NablaAssetManifests: DVC_FILE is required")
     endif()
 
-    _nam_get_channel_root(_channel_root CHANNEL "${NAM_CHANNEL}")
+    _nam_get_channel_root(_channel_root CHANNEL "${NAM_CHANNEL}" MANIFEST_ROOT "${NAM_MANIFEST_ROOT}")
     file(STRINGS "${NAM_DVC_FILE}" _lines)
 
     set(_path "")
@@ -230,14 +243,14 @@ endfunction()
 
 function(nam_get_channel_asset_keys OUT_VAR)
     set(options)
-    set(oneValueArgs CHANNEL)
+    set(oneValueArgs CHANNEL MANIFEST_ROOT)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     if (NOT DEFINED NAM_CHANNEL OR "${NAM_CHANNEL}" STREQUAL "")
         set(NAM_CHANNEL "media")
     endif()
 
-    _nam_get_channel_root(_channel_root CHANNEL "${NAM_CHANNEL}")
+    _nam_get_channel_root(_channel_root CHANNEL "${NAM_CHANNEL}" MANIFEST_ROOT "${NAM_MANIFEST_ROOT}")
     file(GLOB_RECURSE _dvc_files "${_channel_root}/*.dvc")
     list(SORT _dvc_files)
 
@@ -246,6 +259,7 @@ function(nam_get_channel_asset_keys OUT_VAR)
         _nam_parse_dvc_file(
             DVC_FILE "${_dvc}"
             CHANNEL "${NAM_CHANNEL}"
+            MANIFEST_ROOT "${NAM_MANIFEST_ROOT}"
             OUT_RELATIVE_PATH _relative_path
             OUT_RELEASE_ASSET _release_asset
             OUT_KEY _key
@@ -257,7 +271,7 @@ endfunction()
 
 function(_nam_find_channel_asset)
     set(options)
-    set(oneValueArgs CHANNEL ASSET OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
+    set(oneValueArgs CHANNEL MANIFEST_ROOT ASSET OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
     if (NOT DEFINED NAM_CHANNEL OR "${NAM_CHANNEL}" STREQUAL "")
@@ -267,7 +281,7 @@ function(_nam_find_channel_asset)
         message(FATAL_ERROR "NablaAssetManifests: ASSET is required")
     endif()
 
-    _nam_get_channel_root(_channel_root CHANNEL "${NAM_CHANNEL}")
+    _nam_get_channel_root(_channel_root CHANNEL "${NAM_CHANNEL}" MANIFEST_ROOT "${NAM_MANIFEST_ROOT}")
     file(GLOB_RECURSE _dvc_files "${_channel_root}/*.dvc")
     list(SORT _dvc_files)
 
@@ -276,6 +290,7 @@ function(_nam_find_channel_asset)
         _nam_parse_dvc_file(
             DVC_FILE "${_dvc}"
             CHANNEL "${NAM_CHANNEL}"
+            MANIFEST_ROOT "${NAM_MANIFEST_ROOT}"
             OUT_RELATIVE_PATH _relative_path
             OUT_RELEASE_ASSET _release_asset
             OUT_KEY _key
@@ -427,7 +442,7 @@ endfunction()
 
 function(nam_add_channel_target)
     set(options NO_SYMLINKS VERBOSE)
-    set(oneValueArgs TARGET CHANNEL REPO TAG CACHE_ROOT DESTINATION_ROOT SHOW_PROGRESS)
+    set(oneValueArgs TARGET CHANNEL MANIFEST_ROOT REPO TAG CACHE_ROOT DESTINATION_ROOT SHOW_PROGRESS)
     set(multiValueArgs ITEMS)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -450,17 +465,19 @@ function(nam_add_channel_target)
         set(NAM_SHOW_PROGRESS ON)
     endif()
 
+    _nam_resolve_manifest_root(_manifest_root MANIFEST_ROOT "${NAM_MANIFEST_ROOT}")
+
     if (NAM_ITEMS)
         set(_items ${NAM_ITEMS})
     else()
-        nam_get_channel_asset_keys(_items CHANNEL "${NAM_CHANNEL}")
+        nam_get_channel_asset_keys(_items CHANNEL "${NAM_CHANNEL}" MANIFEST_ROOT "${_manifest_root}")
     endif()
 
     list(LENGTH _items _item_count)
     _nam_get_backend_kind(_backend_kind)
     _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
     _nam_include_externaldata(_externaldata_provider)
-    _nam_summary("configure channel target `${NAM_TARGET}`: channel=`${NAM_CHANNEL}`, repo=`${NAM_REPO}`, tag=`${NAM_TAG}`, backend=`${_backend_kind}`, externaldata=`${_externaldata_provider}`, cache_root=`${_cache_root}`, total=${_item_count}")
+    _nam_summary("configure channel target `${NAM_TARGET}`: channel=`${NAM_CHANNEL}`, manifest_root=`${_manifest_root}`, repo=`${NAM_REPO}`, tag=`${NAM_TAG}`, backend=`${_backend_kind}`, externaldata=`${_externaldata_provider}`, cache_root=`${_cache_root}`, total=${_item_count}")
 
     _nam_get_github_release_index_file(_index_file REPO "${NAM_REPO}" TAG "${NAM_TAG}" CACHE_ROOT "${NAM_CACHE_ROOT}")
 
@@ -495,6 +512,7 @@ function(nam_add_channel_target)
     foreach(_asset IN LISTS _items)
         _nam_find_channel_asset(
             CHANNEL "${NAM_CHANNEL}"
+            MANIFEST_ROOT "${_manifest_root}"
             ASSET "${_asset}"
             OUT_RELATIVE_PATH _relative_path
             OUT_RELEASE_ASSET _release_asset

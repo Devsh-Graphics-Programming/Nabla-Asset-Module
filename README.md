@@ -43,6 +43,11 @@ At a high level this follows the same pattern used by mature package and artifac
 - `binaryTarget(url:, checksum:)` in `SwiftPM`
 - content-addressed external test data in `CMake ExternalData`, used by projects such as `VTK`
 
+The same consumer module is also meant to stay reusable beyond Nabla itself.
+This repository is the first-party Nabla registry, but consumers can point the
+module at a different manifest checkout and a different `GitHub Release`
+channel without changing the build-graph model.
+
 ## Evidence
 
 ### Git History Pressure

@@ -41,6 +41,7 @@ include("${asset_manifests_repo}/nam.cmake")
 nam_add_channel_target(
     TARGET media
     CHANNEL media
+    MANIFEST_ROOT "${asset_manifests_repo}"
     REPO Devsh-Graphics-Programming/Nabla-Asset-Manifests
     TAG media
     DESTINATION_ROOT "${CMAKE_CURRENT_BINARY_DIR}"
@@ -54,6 +55,7 @@ nam_add_channel_target(
 ## Default arguments
 
 - `CHANNEL = media`
+- `MANIFEST_ROOT = <root of the repository that provides nam.cmake>`
 - `REPO = Devsh-Graphics-Programming/Nabla-Asset-Manifests`
 - `TAG = media`
 - `DESTINATION_ROOT = ${CMAKE_CURRENT_BINARY_DIR}`
@@ -62,6 +64,42 @@ nam_add_channel_target(
 - `SHOW_PROGRESS = ON`
 - `NO_SYMLINKS = OFF`
 - `VERBOSE = OFF`
+
+## Custom manifest repository
+
+The consumer module can also read manifests from a different local checkout
+while still reusing the same public `nam_add_channel_target(...)` entrypoint.
+
+Typical setup:
+
+- add this repository as a submodule or vendor it some other way so
+  `nam.cmake` stays available locally
+- checkout a second repository that contains a compatible channel tree with
+  `.dvc` files
+- publish the corresponding payloads from that second repository as a
+  `GitHub Release`
+
+Example:
+
+```cmake
+include("${nam_module_repo}/nam.cmake")
+
+nam_add_channel_target(
+    TARGET custom_media
+    MANIFEST_ROOT "${custom_manifest_repo}"
+    CHANNEL media
+    REPO my-user/my-manifests
+    TAG media
+    DESTINATION_ROOT "${CMAKE_CURRENT_BINARY_DIR}"
+)
+```
+
+Current scope stays intentionally small:
+
+- manifest discovery can come from a different local repository via
+  `MANIFEST_ROOT`
+- remote payload resolution still uses `GitHub Release assets` only
+- the built-in Nabla defaults remain unchanged when `MANIFEST_ROOT` is omitted
 
 `<ENTRY>` resolves per platform:
 
@@ -195,6 +233,10 @@ Its local options are:
 
 - `NAM_SMOKE_LINK_MODE = auto|symlink|hardlink|copy`
 - `NAM_SMOKE_CACHE_ROOT = <path>`
+- `NAM_SMOKE_MANIFEST_ROOT = <path>`
+- `NAM_SMOKE_REPO = <owner>/<repo>`
+- `NAM_SMOKE_TAG = <release-tag>`
+- `NAM_SMOKE_CHANNEL = <channel>`
 - `NAM_SMOKE_NO_SYMLINKS = ON|OFF`
 
 Those options are for smoke verification only. They are not part of the public

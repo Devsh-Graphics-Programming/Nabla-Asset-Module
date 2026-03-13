@@ -8,7 +8,7 @@ on:
 
 jobs:
   smoke:
-    name: ${{ matrix.os }} / ${{ matrix.link_mode }}
+    name: ${{ matrix.os }} / ${{ matrix.manifest_source }} / ${{ matrix.link_mode }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -21,6 +21,9 @@ jobs:
           - symlink
           - hardlink
           - copy
+        manifest_source:
+          - internal
+          - external
         include:
           - os: ubuntu-latest
             native_build_arg: -j1
@@ -34,12 +37,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Checkout external manifests
+        if: matrix.manifest_source == 'external'
+        uses: actions/checkout@v6
+        with:
+          repository: AnastaZIuk/nam-smoke-manifests
+          path: external-manifests
+
       - name: Restore NAM cache
         uses: actions/cache@v5
         with:
           path: ${{ env.NAM_CACHE_ROOT }}
-          key: nam-cache-${{ runner.os }}-${{ hashFiles('media/**/*.dvc') }}
+          key: nam-cache-${{ runner.os }}-${{ matrix.manifest_source }}-${{ hashFiles('media/**/*.dvc', 'external-manifests/media/**/*.dvc') }}
           restore-keys: |
+            nam-cache-${{ runner.os }}-${{ matrix.manifest_source }}-
             nam-cache-${{ runner.os }}-
 
       - name: Configure smoke
@@ -47,9 +58,18 @@ jobs:
         run: |
           cmake -E rm -rf $env:SMOKE_BUILD_DIR
           cmake -E make_directory $env:NAM_CACHE_ROOT
-          cmake -S smoke -B $env:SMOKE_BUILD_DIR `
-            -DNAM_SMOKE_CACHE_ROOT="$env:NAM_CACHE_ROOT" `
-            -DNAM_SMOKE_LINK_MODE=${{ matrix.link_mode }}
+          $cmakeArgs = @(
+            '-S', 'smoke',
+            '-B', $env:SMOKE_BUILD_DIR,
+            "-DNAM_SMOKE_CACHE_ROOT=$env:NAM_CACHE_ROOT",
+            "-DNAM_SMOKE_LINK_MODE=${{ matrix.link_mode }}"
+          )
+          if ('${{ matrix.manifest_source }}' -eq 'external') {
+            $cmakeArgs += "-DNAM_SMOKE_MANIFEST_ROOT=$env:GITHUB_WORKSPACE/external-manifests"
+            $cmakeArgs += '-DNAM_SMOKE_REPO=AnastaZIuk/nam-smoke-manifests'
+            $cmakeArgs += '-DNAM_SMOKE_TAG=media'
+          }
+          & cmake @cmakeArgs
 
       - name: Build smoke
         shell: pwsh
