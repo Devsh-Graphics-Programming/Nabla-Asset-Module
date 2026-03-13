@@ -6,7 +6,7 @@
   <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/actions/workflows/smoke.yml">
     <img src="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/actions/workflows/smoke.yml/badge.svg" alt="Smoke Status" /></a>
   <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests">
-    <img src="https://img.shields.io/github/repo-size/Devsh-Graphics-Programming/Nabla-Asset-Manifests?label=repo%20size" alt="Repository size" /></a>
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdevsh-graphics-programming.github.io%2FNabla-Asset-Manifests%2Fmetrics%2Frepo-size.json" alt="Repository size" /></a>
   <a href="https://opensource.org/licenses/Apache-2.0">
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" /></a>
   <a href="https://discord.gg/krsBcABm7u">
