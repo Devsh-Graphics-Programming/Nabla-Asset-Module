@@ -1,12 +1,12 @@
 <div align="center">
-   <img alt="Click to see the source" height="200" src="https://devsh-graphics-programming.github.io/Nabla-Asset-Module/auxiliary/nabla-glow.svg" width="200" />
+   <img alt="Click to see the source" height="200" src="https://devsh-graphics-programming.github.io/Nabla-Asset-Manifests/auxiliary/nabla-glow.svg" width="200" />
 </div>
 
 <p align="center">
   <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Module/actions/workflows/smoke.yml">
     <img src="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Module/actions/workflows/smoke.yml/badge.svg" alt="Smoke Status" /></a>
   <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Module">
-    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdevsh-graphics-programming.github.io%2FNabla-Asset-Module%2Fmetrics%2Frepo-size.json" alt="Repository size" /></a>
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdevsh-graphics-programming.github.io%2FNabla-Asset-Manifests%2Fmetrics%2Fnabla-asset-module-repo-size.json" alt="Repository size" /></a>
   <a href="https://opensource.org/licenses/Apache-2.0">
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" /></a>
   <a href="https://discord.gg/krsBcABm7u">
@@ -152,7 +152,7 @@ This is the exact consumer model we want:
 - no requirement for consumers to know which remote backend served the blob
 
 <p align="center">
-  <img src="https://devsh-graphics-programming.github.io/Nabla-Asset-Module/auxiliary/externaldata-flow-kitware.jpg" alt="CMake ExternalData content flow" width="560" />
+  <img src="https://devsh-graphics-programming.github.io/Nabla-Asset-Manifests/auxiliary/externaldata-flow-kitware.jpg" alt="CMake ExternalData content flow" width="560" />
 </p>
 <p align="center">
   <sub>reference: <a href="https://www.kitware.com/cmake-externaldata-using-large-files-with-distributed-version-control/">kitware</a></sub>
