@@ -22,7 +22,7 @@ This repository is the engine behind NAM.
 It provides an include-only CMake consumer module that:
 
 - reads `.dvc` manifests from a local manifest checkout
-- resolves payloads from `GitHub Release assets` into one shared local object store
+- resolves payloads from the configured remote source into one shared local object store
 - materializes normal files into build trees through `hardlink`, `symlink`, or `copy`
 - keeps the consumer build graph on public `CMake ExternalData` APIs
 
