@@ -68,7 +68,7 @@ nam_add_channel_target(
 
 For the official first-party Nabla registry you normally set `MANIFEST_ROOT`
 explicitly to a local checkout of
-`Devsh-Graphics-Programming/Nabla-Asset-Manifests`. The built-in
+[`Nabla-Asset-Manifests`](https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests). The built-in
 `MANIFEST_ROOT` default remains useful for repositories that colocate the
 module and their manifests in the same tree.
 
@@ -107,7 +107,7 @@ Current scope stays intentionally small:
   `MANIFEST_ROOT`
 - remote payload resolution still uses `GitHub Release assets` only
 - the default first-party Nabla registry stays
-  `Devsh-Graphics-Programming/Nabla-Asset-Manifests`
+  [`Nabla-Asset-Manifests`](https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests)
 - the built-in `MANIFEST_ROOT` default remains available for colocated
   module-plus-manifest repositories
 

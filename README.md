@@ -74,7 +74,7 @@ At a high level this follows the same pattern used by mature package and artifac
 
 The same consumer module is also meant to stay reusable beyond Nabla itself.
 The default first-party registry is
-[`Devsh-Graphics-Programming/Nabla-Asset-Manifests`](https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests),
+[`Nabla-Asset-Manifests`](https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests),
 but consumers can point the module at a different manifest checkout and a
 different `GitHub Release` channel without changing the build-graph model.
 
