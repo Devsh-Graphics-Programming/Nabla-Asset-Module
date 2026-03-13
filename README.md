@@ -196,7 +196,3 @@ The backend itself does not matter:
 - it can be an internal mirror or a static file server
 
 Multiple backends can coexist with ordered fallback. If we later replace `GitHub Release assets` with a different backend, consumers do not have to notice. They continue to resolve the same manifests into the same logical local files.
-
-Release publishing policy in this prototype is intentionally simple:
-- standalone assets are published as individual files
-- bundles are published as zip archives
