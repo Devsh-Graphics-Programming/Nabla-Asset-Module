@@ -1,31 +1,34 @@
 <div align="center">
-   <img alt="Click to see the source" height="200" src="https://devsh-graphics-programming.github.io/Nabla-Asset-Manifests/auxiliary/nabla-glow.svg" width="200" />
+   <img alt="Click to see the source" height="200" src="https://devsh-graphics-programming.github.io/Nabla-Asset-Module/auxiliary/nabla-glow.svg" width="200" />
 </div>
 
 <p align="center">
-  <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/actions/workflows/smoke.yml">
-    <img src="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/actions/workflows/smoke.yml/badge.svg" alt="Smoke Status" /></a>
-  <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests">
-    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdevsh-graphics-programming.github.io%2FNabla-Asset-Manifests%2Fmetrics%2Frepo-size.json" alt="Repository size" /></a>
+  <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Module/actions/workflows/smoke.yml">
+    <img src="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Module/actions/workflows/smoke.yml/badge.svg" alt="Smoke Status" /></a>
+  <a href="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Module">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdevsh-graphics-programming.github.io%2FNabla-Asset-Module%2Fmetrics%2Frepo-size.json" alt="Repository size" /></a>
   <a href="https://opensource.org/licenses/Apache-2.0">
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" /></a>
   <a href="https://discord.gg/krsBcABm7u">
     <img src="https://img.shields.io/discord/308323056592486420?label=discord&logo=discord&logoColor=white&color=7289DA" alt="Join our Discord" /></a>
 </p>
 
-# Nabla Asset Manifests
+# Nabla Asset Module
 
 ## Introduction
 
-This repository provides the NAM consumer module together with the first-party
-Nabla manifest registry and release-backed payload channels, without forcing
-large binary payloads into normal Git history.
+This repository provides the NAM consumer module together with the smoke,
+documentation, vendored `ExternalData` patch, and CI needed to keep the
+consumer-side build graph stable.
 
-The repository itself is first-party Nabla infrastructure, but the consumer
-module is not meant to be Nabla-only. Other projects can vendor
+The official first-party Nabla manifest registry now lives in:
+
+- `https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests`
+
+The module itself is not meant to be Nabla-only. Other projects can vendor
 `nam.cmake`, keep their own `.dvc`-based manifest repository, publish payloads
 through `GitHub Release assets`, and reuse the same build-time materialization
-model.
+model without changing consumer call sites.
 
 Current scope is intentionally narrow. For now the only supported remote
 payload backend is `GitHub Release assets`, and no additional backends are
@@ -56,9 +59,9 @@ At a high level this follows the same pattern used by mature package and artifac
 - content-addressed external test data in `CMake ExternalData`, used by projects such as `VTK`
 
 The same consumer module is also meant to stay reusable beyond Nabla itself.
-This repository is the first-party Nabla registry, but consumers can point the
-module at a different manifest checkout and a different `GitHub Release`
-channel without changing the build-graph model.
+The default first-party registry is `Devsh-Graphics-Programming/Nabla-Asset-Manifests`,
+but consumers can point the module at a different manifest checkout and a
+different `GitHub Release` channel without changing the build-graph model.
 
 ## Evidence
 
@@ -139,7 +142,7 @@ This is the exact consumer model we want:
 - no requirement for consumers to know which remote backend served the blob
 
 <p align="center">
-  <img src="https://devsh-graphics-programming.github.io/Nabla-Asset-Manifests/auxiliary/externaldata-flow-kitware.jpg" alt="CMake ExternalData content flow" width="560" />
+  <img src="https://devsh-graphics-programming.github.io/Nabla-Asset-Module/auxiliary/externaldata-flow-kitware.jpg" alt="CMake ExternalData content flow" width="560" />
 </p>
 <p align="center">
   <sub>reference: <a href="https://www.kitware.com/cmake-externaldata-using-large-files-with-distributed-version-control/">kitware</a></sub>
@@ -183,7 +186,7 @@ Release publishing policy in this prototype is intentionally simple:
 - standalone assets are published as individual files
 - bundles are published as zip archives
 
-## Target layout
+## First-party registry layout
 
 <details>
 <summary>Click to expand</summary>
@@ -233,4 +236,6 @@ licenses/
 
 This is only the starting point.
 
-The repository is intentionally designed so that the rest of the current Nabla `media` tree can be migrated here later under the same model.
+The official first-party Nabla registry is intentionally designed so that the
+rest of the current Nabla `media` tree can be migrated there later under the
+same model.

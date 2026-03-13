@@ -18,10 +18,11 @@ The public entrypoint is:
 ### Minimal usage
 
 ```cmake
-include("${asset_manifests_repo}/nam.cmake")
+include("${nam_module_repo}/nam.cmake")
 
 nam_add_channel_target(
     TARGET media
+    MANIFEST_ROOT "${asset_manifests_repo}"
 )
 ```
 
@@ -36,7 +37,7 @@ Building target `media` then:
 ### Explicit usage
 
 ```cmake
-include("${asset_manifests_repo}/nam.cmake")
+include("${nam_module_repo}/nam.cmake")
 
 nam_add_channel_target(
     TARGET media
@@ -64,6 +65,12 @@ nam_add_channel_target(
 - `SHOW_PROGRESS = ON`
 - `NO_SYMLINKS = OFF`
 - `VERBOSE = OFF`
+
+For the official first-party Nabla registry you normally set `MANIFEST_ROOT`
+explicitly to a local checkout of
+`Devsh-Graphics-Programming/Nabla-Asset-Manifests`. The built-in
+`MANIFEST_ROOT` default remains useful for repositories that colocate the
+module and their manifests in the same tree.
 
 ## Custom manifest repository
 
@@ -99,7 +106,10 @@ Current scope stays intentionally small:
 - manifest discovery can come from a different local repository via
   `MANIFEST_ROOT`
 - remote payload resolution still uses `GitHub Release assets` only
-- the built-in Nabla defaults remain unchanged when `MANIFEST_ROOT` is omitted
+- the default first-party Nabla registry stays
+  `Devsh-Graphics-Programming/Nabla-Asset-Manifests`
+- the built-in `MANIFEST_ROOT` default remains available for colocated
+  module-plus-manifest repositories
 
 `<ENTRY>` resolves per platform:
 
@@ -117,7 +127,7 @@ shipped with the host CMake instead.
 
 ## Source of truth
 
-For input assets the source of truth is:
+For input assets the source of truth inside a manifest registry repository is:
 
 - the physical channel tree such as `media/`
 - `.dvc` files created by `dvc add`
@@ -254,24 +264,24 @@ consumer to verify:
 Typical local smoke runs are:
 
 ```powershell
-cmake -S smoke -B smoke/build
+cmake -S smoke -B smoke/build -DNAM_SMOKE_MANIFEST_ROOT=C:/path/to/Nabla-Asset-Manifests
 cmake --build smoke/build --config Debug --target media -- /m:1
 ```
 
 ```bash
-cmake -S smoke -B smoke/build
+cmake -S smoke -B smoke/build -DNAM_SMOKE_MANIFEST_ROOT=/path/to/Nabla-Asset-Manifests
 cmake --build smoke/build --target media -- -j1
 ```
 
 Forced copy mode:
 
 ```powershell
-cmake -S smoke -B smoke/build -DNAM_SMOKE_NO_SYMLINKS=ON
+cmake -S smoke -B smoke/build -DNAM_SMOKE_MANIFEST_ROOT=C:/path/to/Nabla-Asset-Manifests -DNAM_SMOKE_NO_SYMLINKS=ON
 cmake --build smoke/build --config Debug --target media -- /m:1
 ```
 
 ```bash
-cmake -S smoke -B smoke/build -DNAM_SMOKE_NO_SYMLINKS=ON
+cmake -S smoke -B smoke/build -DNAM_SMOKE_MANIFEST_ROOT=/path/to/Nabla-Asset-Manifests -DNAM_SMOKE_NO_SYMLINKS=ON
 cmake --build smoke/build --target media -- -j1
 ```
 
@@ -294,9 +304,9 @@ The smoke verification script then reports:
 
 Maintainers do not maintain a separate consumer catalog.
 
-The maintainer-facing flow is only:
+In a manifest registry repository the maintainer-facing flow is only:
 
-1. update the physical tree under `media/`
+1. update the physical tree under the chosen channel such as `media/`
 2. run `dvc add` on the changed standalone file or bundle directory
 3. commit the updated `.dvc` metadata to Git
 4. publish the matching payloads to the backend release channel

@@ -33,7 +33,7 @@ jobs:
           curl -L --fail \
             -o site/auxiliary/externaldata-flow-kitware.jpg \
             https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/releases/download/pages-assets/externaldata-flow-kitware.jpg
-          git clone --quiet https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests.git repo-size-check
+          git clone --quiet https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Module.git repo-size-check
           python - <<'PY'
           import json
           from pathlib import Path
@@ -48,7 +48,7 @@ jobs:
           }
           Path("site/metrics/repo-size.json").write_text(json.dumps(payload), encoding="utf-8")
           PY
-          printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Nabla Asset Manifests Pages</title>' > site/index.html
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Nabla Asset Module Pages</title>' > site/index.html
           touch site/.nojekyll
 
       - uses: actions/upload-pages-artifact@v4

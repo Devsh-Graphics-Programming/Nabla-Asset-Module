@@ -8,8 +8,8 @@ set(NAM_SMOKE_LINK_MODE "auto" CACHE STRING "Smoke materialization mode override
 set_property(CACHE NAM_SMOKE_LINK_MODE PROPERTY STRINGS auto symlink hardlink copy)
 set(NAM_SMOKE_CACHE_ROOT "" CACHE PATH "Shared cache root for smoke runs.")
 set(NAM_SMOKE_MANIFEST_ROOT "" CACHE PATH "Manifest root override for smoke runs.")
-set(NAM_SMOKE_REPO "" CACHE STRING "GitHub repository override for smoke runs.")
-set(NAM_SMOKE_TAG "" CACHE STRING "Release tag override for smoke runs.")
+set(NAM_SMOKE_REPO "Devsh-Graphics-Programming/Nabla-Asset-Manifests" CACHE STRING "GitHub repository override for smoke runs.")
+set(NAM_SMOKE_TAG "media" CACHE STRING "Release tag override for smoke runs.")
 set(NAM_SMOKE_CHANNEL "media" CACHE STRING "Channel override for smoke runs.")
 
 string(TOLOWER "${NAM_SMOKE_LINK_MODE}" _nam_smoke_link_mode)
