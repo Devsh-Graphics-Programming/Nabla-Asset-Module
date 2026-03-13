@@ -38,6 +38,10 @@ Current scope is intentionally narrow. For now the only supported remote
 payload backend is `GitHub Release assets`, and no additional backends are
 planned in the near term.
 
+## Usage
+
+For a minimal consumer example, see [smoke/CMakeLists.txt](smoke/CMakeLists.txt).
+
 ### Why this exists
 
 The current Nabla examples layout at:
