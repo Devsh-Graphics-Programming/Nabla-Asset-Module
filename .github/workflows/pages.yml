@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 permissions:
   contents: read
@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/configure-pages@v5
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
       - name: Prepare site
         shell: bash
@@ -55,6 +57,8 @@ jobs:
           touch site/.nojekyll
 
       - uses: actions/upload-pages-artifact@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
         with:
           path: site
 
@@ -67,3 +71,5 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
