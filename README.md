@@ -17,13 +17,19 @@
 
 ## Introduction
 
-This repository is meant to hold lightweight metadata for shared Nabla assets and CI references without forcing large binary payloads into normal Git history.
+This repository provides the NAM consumer module together with the first-party
+Nabla manifest registry and release-backed payload channels, without forcing
+large binary payloads into normal Git history.
 
 The repository itself is first-party Nabla infrastructure, but the consumer
 module is not meant to be Nabla-only. Other projects can vendor
 `nam.cmake`, keep their own `.dvc`-based manifest repository, publish payloads
 through `GitHub Release assets`, and reuse the same build-time materialization
 model.
+
+Current scope is intentionally narrow. For now the only supported remote
+payload backend is `GitHub Release assets`, and no additional backends are
+planned in the near term.
 
 The current Nabla examples layout at:
 
