@@ -154,6 +154,8 @@ The first backend is `GitHub Release assets`.
 The backend itself does not matter:
 - it can be `GitHub Release assets`
 - it can be `S3`
+- it can be `Nextcloud/WebDAV`
+- it can be `Proxmox Backup Server`
 - it can be a custom object store
 - it can be an internal mirror or a static file server
 
