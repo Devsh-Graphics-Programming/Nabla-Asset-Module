@@ -17,9 +17,17 @@
 
 ## Introduction
 
-This repository provides the NAM consumer module together with the smoke,
-documentation, vendored `ExternalData` patch, and CI needed to keep the
-consumer-side build graph stable.
+This repository is the engine behind NAM.
+
+It provides an include-only CMake consumer module that:
+
+- reads `.dvc` manifests from a local manifest checkout
+- resolves payloads from `GitHub Release assets` into one shared local object store
+- materializes normal files into build trees through `hardlink`, `symlink`, or `copy`
+- keeps the consumer build graph on public `CMake ExternalData` APIs
+
+The repository also carries the smoke consumer, documentation, vendored
+`ExternalData` patch, and CI needed to keep that flow stable.
 
 The official first-party Nabla manifest registry now lives in:
 
@@ -27,20 +35,26 @@ The official first-party Nabla manifest registry now lives in:
 
 The module itself is not meant to be Nabla-only. Other projects can vendor
 `nam.cmake`, keep their own `.dvc`-based manifest repository, publish payloads
-through `GitHub Release assets`, and reuse the same build-time materialization
-model without changing consumer call sites.
+through `GitHub Release assets`, and reuse the same consumer-side
+materialization model without changing call sites.
 
 Current scope is intentionally narrow. For now the only supported remote
 payload backend is `GitHub Release assets`, and no additional backends are
 planned in the near term.
 
+### Why this exists
+
 The current Nabla examples layout at:
 
 - `https://github.com/Devsh-Graphics-Programming/Nabla-Example-And-Tests-Media`
 
-looks deceptively harmless because it is "just for examples", but it is already enough to create real operational problems. This is not a theoretical warning. The pattern is already known in practice to slow normal workflows down, make asset maintenance heavier than it should be, work against setups such as Git worktrees, and couple ordinary source-control operations to large binary payload churn. That is a design mistake for asset distribution, even in an examples-only repository, and this pattern should be avoided in other projects as well.
+looks harmless because it is "just for examples", but it already creates real
+operational problems. Large binary payloads inside ordinary Git workflows slow
+down normal source-control operations, make maintenance heavier, work against
+setups such as Git worktrees, and couple code history to binary churn.
 
-The core argument is simple. Source control should keep code and small reviewable metadata. Heavy payloads should stay outside normal Git history.
+The core argument is simple. Source control should keep code and small
+reviewable metadata. Heavy payloads should stay outside normal Git history.
 
 ## Model
 
