@@ -121,6 +121,13 @@ This is the exact consumer model we want:
 - normal local files materialized into build trees via symlinks, hardlinks, or copies
 - no requirement for consumers to know which remote backend served the blob
 
+<p align="center">
+  <img src="docs/externaldata-flow-kitware.jpg" alt="CMake ExternalData content flow" width="560" />
+</p>
+<p align="center">
+  <sub>reference: <a href="https://www.kitware.com/cmake-externaldata-using-large-files-with-distributed-version-control/">kitware</a></sub>
+</p>
+
 ### Vendored `ExternalData` patch
 
 One pragmatic deviation exists on Windows. Stock `ExternalData.cmake` copies
