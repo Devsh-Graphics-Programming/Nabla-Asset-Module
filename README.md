@@ -1,5 +1,5 @@
 <div align="center">
-   <img alt="Click to see the source" height="200" src="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/releases/download/aux/nabla-glow.svg" width="200" />
+   <img alt="Click to see the source" height="200" src="nabla-glow.svg" width="200" />
 </div>
 
 <p align="center">
@@ -122,7 +122,7 @@ This is the exact consumer model we want:
 - no requirement for consumers to know which remote backend served the blob
 
 <p align="center">
-  <img src="https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests/releases/download/aux/externaldata-flow-kitware.jpg" alt="CMake ExternalData content flow" width="560" />
+  <img src="docs/externaldata-flow-kitware.jpg" alt="CMake ExternalData content flow" width="560" />
 </p>
 <p align="center">
   <sub>reference: <a href="https://www.kitware.com/cmake-externaldata-using-large-files-with-distributed-version-control/">kitware</a></sub>
