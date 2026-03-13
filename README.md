@@ -29,10 +29,6 @@ It provides an include-only CMake consumer module that:
 The repository also carries the smoke consumer, documentation, vendored
 `ExternalData` patch, and CI needed to keep that flow stable.
 
-The official first-party Nabla manifest registry now lives in:
-
-- `https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests`
-
 The module itself is not meant to be Nabla-only. Other projects can vendor
 `nam.cmake`, keep their own `.dvc`-based manifest repository, publish payloads
 through `GitHub Release assets`, and reuse the same consumer-side
