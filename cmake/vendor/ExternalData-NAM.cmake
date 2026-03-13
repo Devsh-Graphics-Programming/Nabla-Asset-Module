@@ -174,6 +174,23 @@ calling any of the functions provided by this module.
   some platforms.  The ``ExternalData_NO_SYMLINKS`` variable may be set
   to disable use of symbolic links and enable use of copies instead.
 
+.. variable:: ExternalData_LINK_MODE
+
+  The ``ExternalData_LINK_MODE`` variable selects how real data files are
+  exposed under ``ExternalData_BINARY_ROOT``. Supported values are
+  ``auto``, ``hardlink``, ``symlink``, and ``copy``.
+
+  When set to ``auto``, the module chooses the lightest supported mode for the
+  host. The default order is ``hardlink -> symlink -> copy`` on Windows and
+  ``symlink -> hardlink -> copy`` elsewhere.
+
+.. variable:: ExternalData_STATE_ROOT
+
+  The ``ExternalData_STATE_ROOT`` variable may be set to place module-managed
+  metadata outside ``ExternalData_BINARY_ROOT``. When set, ``ExternalData``
+  stores its hash records and build driver stamps under this directory while
+  still materializing real data files under ``ExternalData_BINARY_ROOT``.
+
 .. variable:: ExternalData_OBJECT_STORES
 
   The ``ExternalData_OBJECT_STORES`` variable may be set to a list of local
@@ -516,6 +533,7 @@ function(ExternalData_add_target target)
     string(REPLACE "|" ";" tuple "${entry}")
     list(GET tuple 0 file)
     list(GET tuple 1 name)
+    _ExternalData_compute_build_stamp_file("${file}" build_stamp_file)
     if(NOT DEFINED "_ExternalData_FILE_${file}")
       set("_ExternalData_FILE_${file}" 1)
       get_property(added DIRECTORY PROPERTY "_ExternalData_FILE_${file}")
@@ -523,17 +541,18 @@ function(ExternalData_add_target target)
         set_property(DIRECTORY PROPERTY "_ExternalData_FILE_${file}" 1)
         add_custom_command(
           COMMENT "Generating ${file}"
-          OUTPUT "${file}"
+          OUTPUT "${build_stamp_file}" "${file}"
           COMMAND ${CMAKE_COMMAND} -Drelative_top=${CMAKE_BINARY_DIR}
                                    -Dfile=${file} -Dname=${name}
                                    -DExternalData_ACTION=local
                                    -DExternalData_SHOW_PROGRESS=${_ExternalData_add_target_SHOW_PROGRESS}
                                    -DExternalData_CONFIG=${config}
                                    -P ${CMAKE_CURRENT_FUNCTION_LIST_FILE}
+          COMMAND ${CMAKE_COMMAND} -E touch "${build_stamp_file}"
           MAIN_DEPENDENCY "${name}"
           )
       endif()
-      list(APPEND files "${file}")
+      list(APPEND files "${build_stamp_file}")
     endif()
   endforeach()
 
@@ -546,7 +565,8 @@ function(ExternalData_add_target target)
     list(GET tuple 2 exts)
     string(REPLACE "+" ";" exts_list "${exts}")
     list(GET exts_list 0 first_ext)
-    set(stamp "-hash-stamp")
+    _ExternalData_compute_stamp_file("${file}" stamp_file)
+    _ExternalData_compute_build_stamp_file("${file}" build_stamp_file)
     if(NOT DEFINED "_ExternalData_FILE_${file}")
       set("_ExternalData_FILE_${file}" 1)
       get_property(added DIRECTORY PROPERTY "_ExternalData_FILE_${file}")
@@ -555,11 +575,12 @@ function(ExternalData_add_target target)
         add_custom_command(
           # Users care about the data file, so hide the hash/timestamp file.
           COMMENT "Generating ${file}"
-          # The hash/timestamp file is the output from the build perspective.
-          # List the real file as a second output in case it is a broken link.
+          # Use a dedicated build stamp as the primary output so IDE
+          # generators keep an explicit build step for each materialized file.
+          # List the hash record and real file as secondary outputs.
           # The files must be listed in this order so CMake can hide from the
           # make tool that a symlink target may not be newer than the input.
-          OUTPUT "${file}${stamp}" "${file}"
+          OUTPUT "${build_stamp_file}" "${stamp_file}" "${file}"
           # Run the data fetch/update script.
           COMMAND ${CMAKE_COMMAND} -Drelative_top=${CMAKE_BINARY_DIR}
                                    -Dfile=${file} -Dname=${name} -Dexts=${exts}
@@ -567,11 +588,12 @@ function(ExternalData_add_target target)
                                    -DExternalData_SHOW_PROGRESS=${_ExternalData_add_target_SHOW_PROGRESS}
                                    -DExternalData_CONFIG=${config}
                                    -P ${CMAKE_CURRENT_FUNCTION_LIST_FILE}
+          COMMAND ${CMAKE_COMMAND} -E touch "${build_stamp_file}"
           # Update whenever the object hash changes.
           MAIN_DEPENDENCY "${name}${first_ext}"
           )
       endif()
-      list(APPEND files "${file}${stamp}")
+      list(APPEND files "${build_stamp_file}")
     endif()
   endforeach()
 
@@ -641,10 +663,54 @@ function(_ExternalData_exact_regex regex_var string)
 endfunction()
 
 function(_ExternalData_atomic_write file content)
+  get_filename_component(dir "${file}" DIRECTORY)
+  file(MAKE_DIRECTORY "${dir}")
   _ExternalData_random(random)
   set(tmp "${file}.tmp${random}")
   file(WRITE "${tmp}" "${content}")
   file(RENAME "${tmp}" "${file}")
+endfunction()
+
+function(_ExternalData_compute_stamp_file file var_stamp)
+  if(DEFINED ExternalData_STATE_ROOT AND NOT "${ExternalData_STATE_ROOT}" STREQUAL "")
+    if(NOT ExternalData_BINARY_ROOT)
+      set(top_bin "${CMAKE_BINARY_DIR}")
+    else()
+      set(top_bin "${ExternalData_BINARY_ROOT}")
+    endif()
+    file(RELATIVE_PATH relfile "${top_bin}" "${file}")
+    if(IS_ABSOLUTE "${relfile}" OR "${relfile}" MATCHES "^\\.\\./")
+      message(FATAL_ERROR
+        "File path is not under ExternalData_BINARY_ROOT:\n"
+        "  file = ${file}\n"
+        "  ExternalData_BINARY_ROOT = ${top_bin}")
+    endif()
+    set(stamp_file "${ExternalData_STATE_ROOT}/${relfile}-hash-stamp")
+  else()
+    set(stamp_file "${file}-hash-stamp")
+  endif()
+  set(${var_stamp} "${stamp_file}" PARENT_SCOPE)
+endfunction()
+
+function(_ExternalData_compute_build_stamp_file file var_stamp)
+  if(DEFINED ExternalData_STATE_ROOT AND NOT "${ExternalData_STATE_ROOT}" STREQUAL "")
+    if(NOT ExternalData_BINARY_ROOT)
+      set(top_bin "${CMAKE_BINARY_DIR}")
+    else()
+      set(top_bin "${ExternalData_BINARY_ROOT}")
+    endif()
+    file(RELATIVE_PATH relfile "${top_bin}" "${file}")
+    if(IS_ABSOLUTE "${relfile}" OR "${relfile}" MATCHES "^\\.\\./")
+      message(FATAL_ERROR
+        "File path is not under ExternalData_BINARY_ROOT:\n"
+        "  file = ${file}\n"
+        "  ExternalData_BINARY_ROOT = ${top_bin}")
+    endif()
+    set(build_stamp_file "${ExternalData_STATE_ROOT}/${relfile}-build-stamp")
+  else()
+    set(build_stamp_file "${file}-build-stamp")
+  endif()
+  set(${var_stamp} "${build_stamp_file}" PARENT_SCOPE)
 endfunction()
 
 function(_ExternalData_link_content name var_ext)
@@ -1294,11 +1360,7 @@ if("${ExternalData_ACTION}" STREQUAL "fetch")
     message(FATAL_ERROR "${errorMsg}")
   endif()
   # Check if file already corresponds to the object.
-  if(DEFINED ExternalData_STAMP_FILE AND NOT "${ExternalData_STAMP_FILE}" STREQUAL "")
-    set(stamp_file "${ExternalData_STAMP_FILE}")
-  else()
-    set(stamp_file "${file}-hash-stamp")
-  endif()
+  _ExternalData_compute_stamp_file("${file}" stamp_file)
   set(file_up_to_date 0)
   if(EXISTS "${file}" AND EXISTS "${stamp_file}")
     file(READ "${stamp_file}" f_hash)

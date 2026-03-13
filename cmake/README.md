@@ -119,9 +119,13 @@ consumer destination tree.
 The NAM patch is intentionally small:
 
 - it adds `ExternalData_LINK_MODE = auto|symlink|hardlink|copy`
-- it lets NAM call the vendored build-time script directly per asset
+- it adds `ExternalData_STATE_ROOT` so metadata can live outside the final
+  destination tree
+- it keeps the stock `ExternalData_Expand_Arguments` plus
+  `ExternalData_Add_Target` consumer flow
 - on the vendored path those modes are applied directly from the shared object
-  store into the final destination tree
+  store into the final destination tree while the module keeps only metadata
+  under the separate state root
 
 This keeps the shared object store model while avoiding an unnecessary physical
 copy when the host supports lightweight links.
@@ -142,12 +146,13 @@ The resulting model is:
 - one shared local object store per user
 - content-addressed objects under `.../objects/SHA256/<hash>`
 - generated `.sha256` references under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/refs/<channel>/...`
-- vendored-path metadata under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/file_stamps` and
-  `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/hash_records`
+- vendored-path metadata under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/state`
 - direct final outputs under `${DESTINATION_ROOT}/${CHANNEL}/...` when the
   vendored module is enabled
 - a stock-module fallback path under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/assets`
   only when `NAM_USE_VENDORED_EXTERNALDATA=OFF`
+- stock-path materialization stamps under
+  `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/file_stamps`
 - normal build targets for consumers
 
 During configure the module probes the current host once and selects the
@@ -161,9 +166,12 @@ Current detection order is:
 At build time:
 
 - the vendored path fetches missing objects into the shared object store and
-  materializes final files directly from that store
+  materializes final files directly from that store through the normal
+  `ExternalData_Add_Target` build graph
 - on the default vendored path every release asset is exposed from the object
   store directly into the final destination root using the configured mode
+- on the vendored path `ExternalData` keeps only hash records and build driver
+  stamps under `${CMAKE_CURRENT_BINARY_DIR}/.nam/<target>/state`
 - on the stock fallback path NAM keeps the older `.nam/<target>/assets` staging
   step and then materializes into the destination root
 
