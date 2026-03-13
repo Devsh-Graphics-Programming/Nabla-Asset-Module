@@ -14,6 +14,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-dir", required=True)
     parser.add_argument("--cache-root", required=True)
     parser.add_argument("--expected-mode", required=True, choices=("symlink", "hardlink", "copy"))
+    parser.add_argument(
+        "--forbid-tree",
+        action="append",
+        default=[],
+        help="Path relative to --build-dir that must not exist after materialization.",
+    )
     return parser.parse_args()
 
 
@@ -56,6 +62,19 @@ def main() -> int:
     media_root = build_dir / "media"
     if not media_root.exists():
         raise SystemExit(f"Missing materialized tree: {media_root}")
+
+    forbidden_trees: list[str] = []
+    for relative_path in args.forbid_tree:
+        forbidden_path = (build_dir / relative_path).resolve()
+        if forbidden_path.exists():
+            forbidden_trees.append(str(forbidden_path))
+
+    if forbidden_trees:
+        preview = ", ".join(forbidden_trees[:5])
+        raise SystemExit(
+            f"Expected the following paths to stay absent after materialization, "
+            f"but found {len(forbidden_trees)} present. First entries: {preview}"
+        )
 
     files = sorted(iter_files(media_root))
     if not files:
@@ -110,6 +129,7 @@ def main() -> int:
         "build_dir": str(build_dir),
         "cache_root": str(cache_root),
         "expected_mode": args.expected_mode,
+        "forbid_tree": args.forbid_tree,
         "file_count": len(files),
         "counts": counts,
         "logical_size_bytes": logical_size,

@@ -1,10 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file LICENSE.rst or https://cmake.org/licensing for details.
-#
-# Vendored by Nabla Asset Manifests from CMake 4.2 `ExternalData.cmake`.
-# NAM patch scope is intentionally narrow:
-# - on Windows prefer hardlinks, then symlinks, then copies when exposing
-#   objects from the content-addressed store
 
 #[=======================================================================[.rst:
 ExternalData
@@ -184,12 +179,16 @@ calling any of the functions provided by this module.
   host. The default order is ``hardlink -> symlink -> copy`` on Windows and
   ``symlink -> hardlink -> copy`` elsewhere.
 
+  When ``ExternalData_NO_SYMLINKS`` is set, the ``symlink`` mode is removed
+  from automatic selection and cannot be requested explicitly.
+
 .. variable:: ExternalData_STATE_ROOT
 
   The ``ExternalData_STATE_ROOT`` variable may be set to place module-managed
   metadata outside ``ExternalData_BINARY_ROOT``. When set, ``ExternalData``
   stores its hash records and build driver stamps under this directory while
   still materializing real data files under ``ExternalData_BINARY_ROOT``.
+  By default, these files continue to be placed next to the materialized data.
 
 .. variable:: ExternalData_OBJECT_STORES
 
@@ -576,7 +575,8 @@ function(ExternalData_add_target target)
           # Users care about the data file, so hide the hash/timestamp file.
           COMMENT "Generating ${file}"
           # Use a dedicated build stamp as the primary output so IDE
-          # generators keep an explicit build step for each materialized file.
+          # generators keep an explicit build step for each materialized file
+          # even when metadata is redirected outside the data tree.
           # List the hash record and real file as secondary outputs.
           # The files must be listed in this order so CMake can hide from the
           # make tool that a symlink target may not be newer than the input.

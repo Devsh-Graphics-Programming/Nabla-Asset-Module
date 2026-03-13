@@ -61,4 +61,5 @@ jobs:
           python smoke/ci/verify_materialization.py `
             --build-dir $env:SMOKE_BUILD_DIR `
             --cache-root $env:NAM_CACHE_ROOT `
-            --expected-mode ${{ matrix.link_mode }}
+            --expected-mode ${{ matrix.link_mode }} `
+            --forbid-tree .nam/media/assets

@@ -206,6 +206,7 @@ consumer to verify:
 - Windows and Linux runners
 - explicit `symlink`, `hardlink`, and `copy` modes
 - shared cache reuse via `${{ github.workspace }}/.nam-cache`
+- absence of the legacy vendored payload staging tree under `.nam/<target>/assets`
 - post-build size and materialization statistics
 
 Typical local smoke runs are:
