@@ -121,13 +121,20 @@ This is the exact consumer model we want:
 - normal local files materialized into build trees via symlinks, hardlinks, or copies
 - no requirement for consumers to know which remote backend served the blob
 
+### Vendored `ExternalData` patch
+
 One pragmatic deviation exists on Windows. Stock `ExternalData.cmake` copies
 objects into `ExternalData_BINARY_ROOT`, which reintroduces a full build-local
-copy before the final build tree. This repository therefore vendors a
-small `ExternalData` patch by default that materializes directly from the
-shared object store into the final build tree and prefers `hardlink`, then
-`symlink`, then `copy` on Windows. Consumers can still fall back to the host
-CMake module with `-DNAM_USE_VENDORED_EXTERNALDATA=OFF`.
+copy before the final build tree.
+
+This repository therefore vendors a small `ExternalData` patch by default that
+materializes directly from the shared object store into the final build tree
+and prefers `hardlink`, then `symlink`, then `copy` on Windows.
+
+The patch is kept isolated and general-purpose on purpose so it can be
+proposed upstream to Kitware as a normal `ExternalData` improvement. Consumers
+can still fall back to the host CMake module with
+`-DNAM_USE_VENDORED_EXTERNALDATA=OFF`.
 
 ## Backends
 
