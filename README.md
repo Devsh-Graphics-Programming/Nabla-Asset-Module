@@ -59,6 +59,10 @@ or from the same page:
 
 > Store programmatically generated files outside of Git, such as in object storage.
 
+[`DVC`](https://github.com/iterative/dvc):
+
+> Store them in your cloud storage but keep their version info in your Git repo.
+
 ## Why not Git LFS as the primary model
 
 Git LFS is better than checking large blobs directly into normal Git history, but it is still not the model we want to optimize around here.
@@ -73,10 +77,6 @@ The strongest reasons are:
 > If you adopt LFS today, you are committing to a) running an LFS server forever b) incurring a history rewrite in the future in order to remove LFS from your repo, or c) ceasing to provide an LFS server and locking out people from using older Git commits.
 
 > So adoption of Git LFS is a one way door that can't be easily reversed.
-
-[`DVC`](https://github.com/iterative/dvc):
-
-> Store them in your cloud storage but keep their version info in your Git repo.
 
 Operational failure modes are documented very explicitly:
 
