@@ -46,7 +46,7 @@ For a minimal consumer example, see [smoke/CMakeLists.txt](smoke/CMakeLists.txt)
 
 The current Nabla examples layout at:
 
-- `https://github.com/Devsh-Graphics-Programming/Nabla-Example-And-Tests-Media`
+- [Nabla-Example-And-Tests-Media](https://github.com/Devsh-Graphics-Programming/Nabla-Example-And-Tests-Media)
 
 looks harmless because it is "just for examples", but it already creates real
 operational problems. Large binary payloads inside ordinary Git workflows slow
@@ -73,7 +73,8 @@ At a high level this follows the same pattern used by mature package and artifac
 - content-addressed external test data in `CMake ExternalData`, used by projects such as `VTK`
 
 The same consumer module is also meant to stay reusable beyond Nabla itself.
-The default first-party registry is `Devsh-Graphics-Programming/Nabla-Asset-Manifests`,
+The default first-party registry is
+[`Devsh-Graphics-Programming/Nabla-Asset-Manifests`](https://github.com/Devsh-Graphics-Programming/Nabla-Asset-Manifests),
 but consumers can point the module at a different manifest checkout and a
 different `GitHub Release` channel without changing the build-graph model.
 
