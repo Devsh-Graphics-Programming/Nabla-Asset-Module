@@ -18,6 +18,9 @@ The public entrypoint is:
 - `nam_materialize_channel_now(...)`
 - `nam_get_flat_release_asset_name(...)`
 
+Maintainer-only helper scripts live alongside the consumer module but they are
+not part of that public API surface.
+
 ### Minimal usage
 
 ```cmake
@@ -353,3 +356,44 @@ In a manifest registry repository the maintainer-facing flow is only:
 2. run `dvc add` on the changed standalone file or bundle directory
 3. commit the updated `.dvc` metadata to Git
 4. publish the matching payloads to the backend release channel
+
+### Maintainer helper for flattened releases
+
+The repository also ships a small script-mode helper:
+
+- `cmake/NablaAssetManifestsPrepareRelease.cmake`
+
+It is intended for maintainers who publish flattened release assets but still
+want normal `.dvc` files that describe the original package layout.
+
+The helper:
+
+- has no dependency beyond `cmake`
+- writes minimal `.dvc` files directly from the source tree
+- copies the generated `.dvc` files into a channel tree
+- copies payload files into a flattened release payload directory
+- optionally prunes stale outputs
+- optionally writes a convenience `manifests.zip`
+
+Minimal example:
+
+```cmake
+cmake -D SOURCE_ROOT=/abs/package-root ^
+      -D PAYLOAD_ROOT=/abs/release-payload ^
+      -D MANIFEST_ROOT=/abs/manifests ^
+      -D CHANNEL=nsc-windows-x64-release ^
+      -D MANIFESTS_ZIP=/abs/nsc-windows-x64-release-manifests.zip ^
+      -D PRUNE=ON ^
+      -P cmake/NablaAssetManifestsPrepareRelease.cmake
+```
+
+Default update mode is incremental:
+
+- existing unchanged manifests stay untouched
+- changed files overwrite their matching `.dvc`
+- `PRUNE=ON` additionally removes stale payloads and stale `.dvc` files
+
+This helper is for release preparation only. Consumers still use:
+
+- `nam_add_channel_target(...)`
+- `nam_materialize_channel_now(...)`
