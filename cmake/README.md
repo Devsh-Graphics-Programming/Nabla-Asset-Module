@@ -5,15 +5,18 @@ This directory contains the consumer-side module behind the top-level
 
 It is include-only.
 
-`nam.cmake` is not a script-mode downloader. It keeps the `ExternalData`
-build-graph model so the intended consumer flow is a normal configure plus
-build.
+`nam.cmake` is not a script-mode downloader. The default consumer path still
+keeps the `ExternalData` build-graph model, but the module also exposes a
+configure-time materialization helper for package bootstrap flows that must
+run `find_package(...)` on fetched content during configure.
 
 ## Consumer usage
 
 The public entrypoint is:
 
 - `nam_add_channel_target(...)`
+- `nam_materialize_channel_now(...)`
+- `nam_get_flat_release_asset_name(...)`
 
 ### Minimal usage
 
@@ -25,6 +28,26 @@ nam_add_channel_target(
     MANIFEST_ROOT "${asset_manifests_repo}"
 )
 ```
+
+### Configure-time bootstrap
+
+```cmake
+include("${nam_module_repo}/nam.cmake")
+
+nam_materialize_channel_now(
+    CHANNEL toolchain
+    MANIFEST_ROOT "${CMAKE_SOURCE_DIR}/manifests"
+    REPO my-user/my-repo
+    TAG toolchain
+    DESTINATION_ROOT "${CMAKE_BINARY_DIR}/downloads"
+    FLAT_RELEASE_ASSET_NAMES
+    OUT_CHANNEL_ROOT package_root
+)
+```
+
+This path is intended for packages that must already exist before generate
+time, for example when configure needs to run `find_package(...)` on the
+fetched content.
 
 Building target `media` then:
 
@@ -138,6 +161,16 @@ The module reads those `.dvc` files and derives:
 - the expected release asset name
 - the content hash used by the shared `ExternalData` object store
 
+For file payloads the default release asset naming is the tracked basename.
+
+If `FLAT_RELEASE_ASSET_NAMES` is enabled, NAM derives the release asset name
+from the full relative path and encodes it as:
+
+- `<hex(relative-path)>__<basename>`
+
+This is intended for flattened backends such as GitHub Releases when the
+consumer still needs the original package layout after materialization.
+
 Current publishing convention:
 
 - standalone payloads are published as individual files
@@ -223,6 +256,15 @@ At build time:
 - on the stock fallback path NAM keeps the older `.nam/<target>/assets` staging
   step and then materializes into the destination root
 
+At configure time:
+
+- `nam_materialize_channel_now(...)` fetches the selected payloads into the
+  shared object store immediately
+- it then materializes the final destination tree directly from that object
+  store using the same link mode rules
+- this is useful for package bootstrap cases that need fetched content before
+  the build graph exists
+
 Passing `NO_SYMLINKS` forces copy materialization even when the host supports
 lightweight links.
 
@@ -248,6 +290,7 @@ Its local options are:
 - `NAM_SMOKE_TAG = <release-tag>`
 - `NAM_SMOKE_CHANNEL = <channel>`
 - `NAM_SMOKE_NO_SYMLINKS = ON|OFF`
+- `NAM_SMOKE_FLAT_RELEASE_ASSET_NAMES = ON|OFF`
 
 Those options are for smoke verification only. They are not part of the public
 consumer module API.

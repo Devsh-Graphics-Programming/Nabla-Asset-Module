@@ -74,3 +74,89 @@ jobs:
             --cache-root $env:NAM_CACHE_ROOT `
             --expected-mode ${{ matrix.link_mode }} `
             --forbid-tree .nam/media/assets
+
+  smoke-flatten:
+    name: flatten / ${{ matrix.os }} / ${{ matrix.link_mode }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        link_mode:
+          - hardlink
+        include:
+          - os: ubuntu-latest
+            native_build_arg: -j1
+          - os: windows-latest
+            native_build_arg: /m:1
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NAM_CACHE_ROOT: ${{ github.workspace }}/.nam-cache-flat
+      SMOKE_BUILD_DIR: ${{ github.workspace }}/smoke/build-flat
+      SMOKE_MANIFEST_DIR: ${{ github.workspace }}/official-manifests
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download smoke-flatten manifests
+        shell: pwsh
+        run: |
+          cmake -E rm -rf $env:SMOKE_MANIFEST_DIR
+          cmake -E make_directory $env:SMOKE_MANIFEST_DIR
+          gh release download smoke-flatten `
+            --repo Devsh-Graphics-Programming/Nabla-Asset-Manifests `
+            --pattern smoke-flatten-manifests.zip `
+            --dir $env:GITHUB_WORKSPACE
+          Expand-Archive `
+            -Path "$env:GITHUB_WORKSPACE/smoke-flatten-manifests.zip" `
+            -DestinationPath $env:SMOKE_MANIFEST_DIR `
+            -Force
+
+      - name: Restore NAM flat cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.NAM_CACHE_ROOT }}
+          key: nam-flat-cache-${{ runner.os }}-smoke-flatten-v1
+          restore-keys: |
+            nam-flat-cache-${{ runner.os }}-
+
+      - name: Configure flatten smoke
+        shell: pwsh
+        run: |
+          cmake -E rm -rf $env:SMOKE_BUILD_DIR
+          cmake -E make_directory $env:NAM_CACHE_ROOT
+          $cmakeArgs = @(
+            '-S', 'smoke',
+            '-B', $env:SMOKE_BUILD_DIR,
+            "-DNAM_SMOKE_CACHE_ROOT=$env:NAM_CACHE_ROOT",
+            "-DNAM_SMOKE_MANIFEST_ROOT=$env:SMOKE_MANIFEST_DIR",
+            '-DNAM_SMOKE_REPO=Devsh-Graphics-Programming/Nabla-Asset-Manifests',
+            '-DNAM_SMOKE_TAG=smoke-flatten',
+            '-DNAM_SMOKE_CHANNEL=smoke-flatten',
+            '-DNAM_SMOKE_FLAT_RELEASE_ASSET_NAMES=ON',
+            "-DNAM_SMOKE_LINK_MODE=${{ matrix.link_mode }}"
+          )
+          & cmake @cmakeArgs
+
+      - name: Build flatten smoke
+        shell: pwsh
+        run: cmake --build $env:SMOKE_BUILD_DIR --config Debug --target media -- ${{ matrix.native_build_arg }}
+
+      - name: Verify flatten materialization stats
+        shell: pwsh
+        run: |
+          python smoke/ci/verify_materialization.py `
+            --build-dir $env:SMOKE_BUILD_DIR `
+            --cache-root $env:NAM_CACHE_ROOT `
+            --expected-mode ${{ matrix.link_mode }} `
+            --root-subdir smoke-flatten `
+            --require-path alpha/config.dummy `
+            --require-path gamma/tools/run.dummy `
+            --require-path theta/one/two/three/value.dummy `
+            --require-path lambda/modules/deep/config.dummy `
+            --forbid-substring __ `
+            --forbid-tree .nam/smoke-flatten/assets

@@ -197,8 +197,39 @@ function(_nam_get_channel_root OUT_VAR)
     set(${OUT_VAR} "${_channel_root}" PARENT_SCOPE)
 endfunction()
 
+function(nam_get_flat_release_asset_name OUT_VAR RELATIVE_PATH)
+    if ("${RELATIVE_PATH}" STREQUAL "")
+        message(FATAL_ERROR "NablaAssetManifests: RELATIVE_PATH is required")
+    endif()
+
+    file(TO_CMAKE_PATH "${RELATIVE_PATH}" _relative_path)
+    string(HEX "${_relative_path}" _relative_path_hex)
+    string(TOLOWER "${_relative_path_hex}" _relative_path_hex)
+    get_filename_component(_basename "${_relative_path}" NAME)
+    set(${OUT_VAR} "${_relative_path_hex}__${_basename}" PARENT_SCOPE)
+endfunction()
+
+function(_nam_compute_release_asset_name OUT_VAR RELATIVE_PATH)
+    set(options FLAT_RELEASE_ASSET_NAMES)
+    set(oneValueArgs)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if ("${RELATIVE_PATH}" STREQUAL "")
+        message(FATAL_ERROR "NablaAssetManifests: RELATIVE_PATH is required")
+    endif()
+
+    file(TO_CMAKE_PATH "${RELATIVE_PATH}" _relative_path)
+    if (NAM_FLAT_RELEASE_ASSET_NAMES)
+        nam_get_flat_release_asset_name(_release_asset "${_relative_path}")
+    else()
+        get_filename_component(_release_asset "${_relative_path}" NAME)
+    endif()
+
+    set(${OUT_VAR} "${_release_asset}" PARENT_SCOPE)
+endfunction()
+
 function(_nam_parse_dvc_file)
-    set(options)
+    set(options FLAT_RELEASE_ASSET_NAMES)
     set(oneValueArgs DVC_FILE CHANNEL MANIFEST_ROOT OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
@@ -224,17 +255,29 @@ function(_nam_parse_dvc_file)
     endif()
 
     get_filename_component(_dvc_dir "${NAM_DVC_FILE}" DIRECTORY)
-    get_filename_component(_tracked_abs "${_dvc_dir}/${_path}" ABSOLUTE)
-    file(RELATIVE_PATH _relative_path "${_channel_root}" "${_tracked_abs}")
+    file(REAL_PATH "${_channel_root}" _channel_root_real)
+    file(REAL_PATH "${_dvc_dir}" _dvc_dir_real)
+    file(RELATIVE_PATH _relative_dir "${_channel_root_real}" "${_dvc_dir_real}")
+    file(TO_CMAKE_PATH "${_relative_dir}" _relative_dir)
+    if (_relative_dir STREQUAL ".")
+        set(_relative_path "${_path}")
+    else()
+        set(_relative_path "${_relative_dir}/${_path}")
+    endif()
     file(TO_CMAKE_PATH "${_relative_path}" _relative_path)
 
     if (_md5 MATCHES "\\.dir$")
-        get_filename_component(_name "${_tracked_abs}" NAME)
-        set(_release_asset "${_name}.zip")
         set(_relative_path "${_relative_path}.zip")
-    else()
-        get_filename_component(_release_asset "${_tracked_abs}" NAME)
     endif()
+    set(_release_asset_args)
+    if (NAM_FLAT_RELEASE_ASSET_NAMES)
+        list(APPEND _release_asset_args FLAT_RELEASE_ASSET_NAMES)
+    endif()
+    _nam_compute_release_asset_name(
+        _release_asset
+        "${_relative_path}"
+        ${_release_asset_args}
+    )
 
     set(${NAM_OUT_RELATIVE_PATH} "${_relative_path}" PARENT_SCOPE)
     set(${NAM_OUT_RELEASE_ASSET} "${_release_asset}" PARENT_SCOPE)
@@ -270,7 +313,7 @@ function(nam_get_channel_asset_keys OUT_VAR)
 endfunction()
 
 function(_nam_find_channel_asset)
-    set(options)
+    set(options FLAT_RELEASE_ASSET_NAMES)
     set(oneValueArgs CHANNEL MANIFEST_ROOT ASSET OUT_RELATIVE_PATH OUT_RELEASE_ASSET OUT_KEY)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
 
@@ -287,10 +330,15 @@ function(_nam_find_channel_asset)
 
     set(_match_count 0)
     foreach(_dvc IN LISTS _dvc_files)
+        set(_parse_args)
+        if (NAM_FLAT_RELEASE_ASSET_NAMES)
+            list(APPEND _parse_args FLAT_RELEASE_ASSET_NAMES)
+        endif()
         _nam_parse_dvc_file(
             DVC_FILE "${_dvc}"
             CHANNEL "${NAM_CHANNEL}"
             MANIFEST_ROOT "${NAM_MANIFEST_ROOT}"
+            ${_parse_args}
             OUT_RELATIVE_PATH _relative_path
             OUT_RELEASE_ASSET _release_asset
             OUT_KEY _key
@@ -458,8 +506,193 @@ function(_nam_resolve_remote_asset OUT_DIGEST_VAR OUT_URL_VAR)
     message(FATAL_ERROR "NablaAssetManifests: release asset `${NAM_RELEASE_ASSET}` not found in `${NAM_REPO}` tag `${NAM_TAG}`")
 endfunction()
 
+function(_nam_get_object_store_path OUT_VAR)
+    set(options)
+    set(oneValueArgs CACHE_ROOT HASH)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if (NOT DEFINED NAM_HASH OR "${NAM_HASH}" STREQUAL "")
+        message(FATAL_ERROR "NablaAssetManifests: HASH is required")
+    endif()
+
+    _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
+    set(${OUT_VAR} "${_cache_root}/objects/SHA256/${NAM_HASH}" PARENT_SCOPE)
+endfunction()
+
+function(_nam_materialize_single_file SOURCE_PATH DESTINATION_PATH LINK_MODE)
+    get_filename_component(_destination_dir "${DESTINATION_PATH}" DIRECTORY)
+    file(MAKE_DIRECTORY "${_destination_dir}")
+    if (EXISTS "${DESTINATION_PATH}" OR IS_SYMLINK "${DESTINATION_PATH}")
+        file(REMOVE "${DESTINATION_PATH}")
+    endif()
+
+    if ("${LINK_MODE}" STREQUAL "" OR LINK_MODE STREQUAL "copy")
+        file(COPY_FILE "${SOURCE_PATH}" "${DESTINATION_PATH}" ONLY_IF_DIFFERENT)
+    elseif(LINK_MODE STREQUAL "hardlink")
+        file(REAL_PATH "${SOURCE_PATH}" _source_for_link)
+        file(CREATE_LINK "${_source_for_link}" "${DESTINATION_PATH}" RESULT _result)
+        if (_result)
+            message(FATAL_ERROR "NablaAssetManifests: failed to create hardlink from `${_source_for_link}` to `${DESTINATION_PATH}`: ${_result}")
+        endif()
+    elseif(LINK_MODE STREQUAL "symlink")
+        file(CREATE_LINK "${SOURCE_PATH}" "${DESTINATION_PATH}" SYMBOLIC RESULT _result)
+        if (_result)
+            message(FATAL_ERROR "NablaAssetManifests: failed to create symlink from `${SOURCE_PATH}` to `${DESTINATION_PATH}`: ${_result}")
+        endif()
+    else()
+        message(FATAL_ERROR "NablaAssetManifests: unsupported LINK_MODE `${LINK_MODE}`")
+    endif()
+endfunction()
+
+function(_nam_fetch_object_now OUT_OBJECT_PATH)
+    set(options SHOW_PROGRESS)
+    set(oneValueArgs CACHE_ROOT HASH URL)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if (NOT DEFINED NAM_HASH OR "${NAM_HASH}" STREQUAL "")
+        message(FATAL_ERROR "NablaAssetManifests: HASH is required")
+    endif()
+    if (NOT DEFINED NAM_URL OR "${NAM_URL}" STREQUAL "")
+        message(FATAL_ERROR "NablaAssetManifests: URL is required")
+    endif()
+
+    _nam_get_object_store_path(_object_path CACHE_ROOT "${NAM_CACHE_ROOT}" HASH "${NAM_HASH}")
+    if (EXISTS "${_object_path}")
+        set(${OUT_OBJECT_PATH} "${_object_path}" PARENT_SCOPE)
+        return()
+    endif()
+
+    get_filename_component(_object_dir "${_object_path}" DIRECTORY)
+    file(MAKE_DIRECTORY "${_object_dir}")
+
+    string(RANDOM LENGTH 12 ALPHABET "0123456789abcdef" _random_suffix)
+    set(_tmp_path "${_object_dir}/.nam_tmp_${NAM_HASH}_${_random_suffix}")
+    set(_download_args
+        "${NAM_URL}"
+        "${_tmp_path}"
+        STATUS _status
+        TLS_VERIFY ON
+    )
+    if (NAM_SHOW_PROGRESS)
+        list(APPEND _download_args SHOW_PROGRESS)
+    endif()
+    file(DOWNLOAD ${_download_args})
+    list(GET _status 0 _status_code)
+    if (NOT _status_code EQUAL 0)
+        list(GET _status 1 _status_message)
+        file(REMOVE "${_tmp_path}")
+        message(FATAL_ERROR "NablaAssetManifests: failed to download `${NAM_URL}`: ${_status_message}")
+    endif()
+
+    file(SHA256 "${_tmp_path}" _download_hash)
+    string(TOLOWER "${_download_hash}" _download_hash)
+    if (NOT _download_hash STREQUAL "${NAM_HASH}")
+        file(REMOVE "${_tmp_path}")
+        message(FATAL_ERROR "NablaAssetManifests: downloaded asset hash mismatch for `${NAM_URL}`. Expected `${NAM_HASH}`, got `${_download_hash}`")
+    endif()
+
+    if (EXISTS "${_object_path}")
+        file(REMOVE "${_tmp_path}")
+    else()
+        file(RENAME "${_tmp_path}" "${_object_path}")
+    endif()
+
+    set(${OUT_OBJECT_PATH} "${_object_path}" PARENT_SCOPE)
+endfunction()
+
+function(nam_materialize_channel_now)
+    set(options NO_SYMLINKS VERBOSE FLAT_RELEASE_ASSET_NAMES SHOW_PROGRESS)
+    set(oneValueArgs CHANNEL MANIFEST_ROOT REPO TAG CACHE_ROOT DESTINATION_ROOT OUT_CHANNEL_ROOT OUT_ITEM_COUNT)
+    set(multiValueArgs ITEMS)
+    cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    if (NOT DEFINED NAM_CHANNEL OR "${NAM_CHANNEL}" STREQUAL "")
+        set(NAM_CHANNEL "media")
+    endif()
+    if (NOT DEFINED NAM_REPO OR "${NAM_REPO}" STREQUAL "")
+        set(NAM_REPO "Devsh-Graphics-Programming/Nabla-Asset-Manifests")
+    endif()
+    if (NOT DEFINED NAM_TAG OR "${NAM_TAG}" STREQUAL "")
+        set(NAM_TAG "media")
+    endif()
+    if (NOT DEFINED NAM_DESTINATION_ROOT OR "${NAM_DESTINATION_ROOT}" STREQUAL "")
+        set(NAM_DESTINATION_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
+    endif()
+
+    _nam_resolve_manifest_root(_manifest_root MANIFEST_ROOT "${NAM_MANIFEST_ROOT}")
+    _nam_resolve_cache_root(_cache_root CACHE_ROOT "${NAM_CACHE_ROOT}")
+
+    if (NAM_ITEMS)
+        set(_items ${NAM_ITEMS})
+    else()
+        nam_get_channel_asset_keys(_items CHANNEL "${NAM_CHANNEL}" MANIFEST_ROOT "${_manifest_root}")
+    endif()
+
+    list(LENGTH _items _item_count)
+    _nam_get_backend_kind(_backend_kind)
+    _nam_summary("materialize channel now `${NAM_CHANNEL}`: manifest_root=`${_manifest_root}`, repo=`${NAM_REPO}`, tag=`${NAM_TAG}`, backend=`${_backend_kind}`, cache_root=`${_cache_root}`, total=${_item_count}")
+
+    _nam_resolve_file_link_mode(
+        _file_link_mode
+        SOURCE_ROOT "${_cache_root}/objects/SHA256"
+        DESTINATION_ROOT "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}"
+    )
+    if (NAM_NO_SYMLINKS)
+        set(_file_link_mode "copy")
+    endif()
+    _nam_summary("configure-time materialization mode: `${_file_link_mode}`")
+
+    foreach(_asset IN LISTS _items)
+        set(_find_args)
+        if (NAM_FLAT_RELEASE_ASSET_NAMES)
+            list(APPEND _find_args FLAT_RELEASE_ASSET_NAMES)
+        endif()
+        _nam_find_channel_asset(
+            CHANNEL "${NAM_CHANNEL}"
+            MANIFEST_ROOT "${_manifest_root}"
+            ASSET "${_asset}"
+            ${_find_args}
+            OUT_RELATIVE_PATH _relative_path
+            OUT_RELEASE_ASSET _release_asset
+            OUT_KEY _key
+        )
+        _nam_resolve_remote_asset(
+            _sha256
+            _url
+            REPO "${NAM_REPO}"
+            TAG "${NAM_TAG}"
+            RELEASE_ASSET "${_release_asset}"
+            CACHE_ROOT "${NAM_CACHE_ROOT}"
+        )
+        set(_fetch_object_args
+            CACHE_ROOT "${NAM_CACHE_ROOT}"
+            HASH "${_sha256}"
+            URL "${_url}"
+        )
+        if (NAM_SHOW_PROGRESS)
+            list(APPEND _fetch_object_args SHOW_PROGRESS)
+        endif()
+        _nam_fetch_object_now(
+            _object_path
+            ${_fetch_object_args}
+        )
+        _nam_materialize_single_file(
+            "${_object_path}"
+            "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}/${_relative_path}"
+            "${_file_link_mode}"
+        )
+    endforeach()
+
+    if (NAM_OUT_CHANNEL_ROOT)
+        set(${NAM_OUT_CHANNEL_ROOT} "${NAM_DESTINATION_ROOT}/${NAM_CHANNEL}" PARENT_SCOPE)
+    endif()
+    if (NAM_OUT_ITEM_COUNT)
+        set(${NAM_OUT_ITEM_COUNT} "${_item_count}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(nam_add_channel_target)
-    set(options NO_SYMLINKS VERBOSE)
+    set(options NO_SYMLINKS VERBOSE FLAT_RELEASE_ASSET_NAMES)
     set(oneValueArgs TARGET CHANNEL MANIFEST_ROOT REPO TAG CACHE_ROOT DESTINATION_ROOT SHOW_PROGRESS)
     set(multiValueArgs ITEMS)
     cmake_parse_arguments(NAM "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -528,10 +761,15 @@ function(nam_add_channel_target)
     set(_asset_refs)
     set(_asset_relpaths)
     foreach(_asset IN LISTS _items)
+        set(_find_args)
+        if (NAM_FLAT_RELEASE_ASSET_NAMES)
+            list(APPEND _find_args FLAT_RELEASE_ASSET_NAMES)
+        endif()
         _nam_find_channel_asset(
             CHANNEL "${NAM_CHANNEL}"
             MANIFEST_ROOT "${_manifest_root}"
             ASSET "${_asset}"
+            ${_find_args}
             OUT_RELATIVE_PATH _relative_path
             OUT_RELEASE_ASSET _release_asset
             OUT_KEY _key

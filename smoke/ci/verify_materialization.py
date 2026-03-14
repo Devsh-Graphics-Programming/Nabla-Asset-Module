@@ -15,10 +15,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cache-root", required=True)
     parser.add_argument("--expected-mode", required=True, choices=("symlink", "hardlink", "copy"))
     parser.add_argument(
+        "--root-subdir",
+        default="media",
+        help="Path relative to --build-dir that contains the materialized tree.",
+    )
+    parser.add_argument(
         "--forbid-tree",
         action="append",
         default=[],
         help="Path relative to --build-dir that must not exist after materialization.",
+    )
+    parser.add_argument(
+        "--require-path",
+        action="append",
+        default=[],
+        help="Path relative to --root-subdir that must exist after materialization.",
+    )
+    parser.add_argument(
+        "--forbid-substring",
+        action="append",
+        default=[],
+        help="Substring that must not appear in any materialized path relative to --root-subdir.",
+    )
+    parser.add_argument(
+        "--ignore-path",
+        action="append",
+        default=[],
+        help="Path relative to --root-subdir that should be ignored by link-mode checks.",
     )
     return parser.parse_args()
 
@@ -59,7 +82,7 @@ def main() -> int:
     args = parse_args()
     build_dir = Path(args.build_dir).resolve()
     cache_root = Path(args.cache_root).resolve()
-    media_root = build_dir / "media"
+    media_root = (build_dir / args.root_subdir).resolve()
     if not media_root.exists():
         raise SystemExit(f"Missing materialized tree: {media_root}")
 
@@ -80,21 +103,41 @@ def main() -> int:
     if not files:
         raise SystemExit(f"No files found under {media_root}")
 
+    ignored_relative_paths = {path.replace("\\", "/") for path in args.ignore_path}
+
+    missing_required_paths: list[str] = []
+    for relative_path in args.require_path:
+        if not (media_root / relative_path).exists():
+            missing_required_paths.append(relative_path)
+
+    if missing_required_paths:
+        preview = ", ".join(missing_required_paths[:5])
+        raise SystemExit(
+            f"Expected the following materialized paths to exist under {media_root}, "
+            f"but {len(missing_required_paths)} are missing. First entries: {preview}"
+        )
+
     counts = {"symlink": 0, "hardlink": 0, "copy": 0}
     logical_size = 0
     estimated_extra_size = 0
     largest_files: list[dict[str, object]] = []
     mismatches: list[str] = []
+    forbidden_substring_hits: list[str] = []
     zip_file_count = 0
     invalid_zip_files: list[str] = []
     for path in files:
         materialization, file_size, extra_size = classify_materialization(path)
         relative_path = path.relative_to(build_dir).as_posix()
+        relative_to_root = path.relative_to(media_root).as_posix()
         counts[materialization] += 1
         logical_size += file_size
         estimated_extra_size += extra_size
-        if materialization != args.expected_mode:
+        if relative_to_root not in ignored_relative_paths and materialization != args.expected_mode:
             mismatches.append(f"{relative_path}={materialization}")
+        for token in args.forbid_substring:
+            if token and token in relative_to_root:
+                forbidden_substring_hits.append(relative_to_root)
+                break
         if path.suffix.lower() == ".zip":
             zip_file_count += 1
             if not zipfile.is_zipfile(path):
@@ -125,11 +168,22 @@ def main() -> int:
             f"but found {len(invalid_zip_files)} invalid files. First invalid entries: {preview}"
         )
 
+    if forbidden_substring_hits:
+        preview = ", ".join(forbidden_substring_hits[:5])
+        raise SystemExit(
+            f"Found {len(forbidden_substring_hits)} materialized paths under {media_root} "
+            f"that contain forbidden substrings. First entries: {preview}"
+        )
+
     summary = {
         "build_dir": str(build_dir),
         "cache_root": str(cache_root),
         "expected_mode": args.expected_mode,
+        "root_subdir": args.root_subdir,
         "forbid_tree": args.forbid_tree,
+        "require_path": args.require_path,
+        "forbid_substring": args.forbid_substring,
+        "ignore_path": args.ignore_path,
         "file_count": len(files),
         "counts": counts,
         "logical_size_bytes": logical_size,
@@ -148,6 +202,7 @@ def main() -> int:
             "## Smoke materialization summary",
             "",
             f"- Expected mode: `{args.expected_mode}`",
+            f"- Root: `{args.root_subdir}`",
             f"- Files: `{len(files)}`",
             f"- Counts: `symlink={counts['symlink']}` `hardlink={counts['hardlink']}` `copy={counts['copy']}`",
             f"- Logical size: `{format_bytes(logical_size)}`",

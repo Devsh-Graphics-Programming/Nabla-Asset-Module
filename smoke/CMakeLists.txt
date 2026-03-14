@@ -11,6 +11,7 @@ set(NAM_SMOKE_MANIFEST_ROOT "" CACHE PATH "Manifest root override for smoke runs
 set(NAM_SMOKE_REPO "Devsh-Graphics-Programming/Nabla-Asset-Manifests" CACHE STRING "GitHub repository override for smoke runs.")
 set(NAM_SMOKE_TAG "media" CACHE STRING "Release tag override for smoke runs.")
 set(NAM_SMOKE_CHANNEL "media" CACHE STRING "Channel override for smoke runs.")
+option(NAM_SMOKE_FLAT_RELEASE_ASSET_NAMES "Enable flattened release asset naming for the smoke scenario." OFF)
 
 string(TOLOWER "${NAM_SMOKE_LINK_MODE}" _nam_smoke_link_mode)
 if (
@@ -45,6 +46,9 @@ if (NAM_SMOKE_TAG)
 endif()
 if (NAM_SMOKE_CHANNEL)
     list(APPEND _nam_extra_args CHANNEL "${NAM_SMOKE_CHANNEL}")
+endif()
+if (NAM_SMOKE_FLAT_RELEASE_ASSET_NAMES)
+    list(APPEND _nam_extra_args FLAT_RELEASE_ASSET_NAMES)
 endif()
 
 unset(NAM_INTERNAL_FORCE_FILE_LINK_MODE)
