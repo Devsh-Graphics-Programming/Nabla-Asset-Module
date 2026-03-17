@@ -177,7 +177,11 @@ The patch is kept isolated and general-purpose on purpose so it can be
 proposed upstream to Kitware as a normal `ExternalData` improvement. Consumers
 can still fall back to the host CMake module with
 `-DNAM_USE_VENDORED_EXTERNALDATA=OFF`.
-The upstream merge request is [cmake/cmake!11814](https://gitlab.kitware.com/cmake/cmake/-/merge_requests/11814).
+The upstream merge requests are
+[cmake/cmake!11814](https://gitlab.kitware.com/cmake/cmake/-/merge_requests/11814)
+for relocatable state metadata and
+[cmake/cmake!11829](https://gitlab.kitware.com/cmake/cmake/-/merge_requests/11829)
+for configurable link materialization mode.
 
 ## Backends
 
